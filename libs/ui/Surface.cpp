@@ -116,6 +116,22 @@ status_t Surface::lock(SurfaceInfo* info, Region* dirty, bool blocking) {
     return mClient->lockSurface(this, info, dirty, blocking);
 }
 
+status_t Surface::lockGem(SurfaceInfo* info, uint32_t* name)
+{
+    status_t err;
+    uint32_t n;
+
+    err = lock(info);
+    if (err != NO_ERROR)
+	    return err;
+
+    n = mHeap[mBackbufferIndex]->getGemName();
+    if (name)
+	    *name = n;
+
+    return NO_ERROR;
+}
+
 status_t Surface::unlockAndPost() {
     if (heapBase(0) == 0) return INVALID_OPERATION;
     if (heapBase(1) == 0) return INVALID_OPERATION;
