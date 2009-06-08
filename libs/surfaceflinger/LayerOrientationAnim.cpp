@@ -269,6 +269,7 @@ void LayerOrientationAnim::drawScaled(float scale, float alphaIn, float alphaOut
         tr.transform(self.mVertices[1], 0, src.h);
         tr.transform(self.mVertices[2], src.w, src.h);
         tr.transform(self.mVertices[3], src.w, 0);
+        self.verticesToFloat();
         if (!(mFlags & DisplayHardware::SLOW_CONFIG)) {
             // Too slow to do this in software
             self.mDrawingState.flags |= ISurfaceComposer::eLayerFilter;

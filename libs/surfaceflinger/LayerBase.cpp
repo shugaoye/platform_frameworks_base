@@ -244,6 +244,7 @@ void LayerBase::validateVisibility(const Transform& planeTransform)
     tr.transform(mVertices[1], 0, h);
     tr.transform(mVertices[2], w, h);
     tr.transform(mVertices[3], w, 0);
+    verticesToFloat();
     if (UNLIKELY(transformed)) {
         // NOTE: here we could also punt if we have too many rectangles
         // in the transparent region
@@ -407,7 +408,7 @@ void LayerBase::clearWithOpenGL(const Region& clip) const
     Region::iterator iterator(clip);
     if (iterator) {
         glEnable(GL_SCISSOR_TEST);
-        glVertexPointer(2, GL_FIXED, 0, mVertices);
+        glVertexPointer(2, GL_FLOAT, 0, mVerticesf);
         while (iterator.iterate(&r)) {
             const GLint sy = fbHeight - (r.top + r.height());
             glScissor(r.left, sy, r.width(), r.height());
@@ -480,11 +481,11 @@ void LayerBase::drawWithOpenGL(const Region& clip,
                 glTexParameterx(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
                 glTexParameterx(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
             }            
-            const GLfixed texCoords[4][2] = {
-                    { 0,        0 },
-                    { 0,        0x10000 },
-                    { 0x10000,  0x10000 },
-                    { 0x10000,  0 }
+            const GLfloat texCoords[4][2] = {
+                    { 0.0f,  0.0f },
+                    { 0.0f,  1.0f },
+                    { 1.0f,  1.0f },
+                    { 1.0f,  0.0f }
             };
 
             glMatrixMode(GL_TEXTURE);
@@ -509,8 +510,8 @@ void LayerBase::drawWithOpenGL(const Region& clip,
             }
 
             glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-            glVertexPointer(2, GL_FIXED, 0, mVertices);
-            glTexCoordPointer(2, GL_FIXED, 0, texCoords);
+            glVertexPointer(2, GL_FLOAT, 0, mVerticesf);
+            glTexCoordPointer(2, GL_FLOAT, 0, texCoords);
 
             Rect r;
             while (iterator.iterate(&r)) {

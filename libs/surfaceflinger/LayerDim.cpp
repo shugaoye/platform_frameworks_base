@@ -97,7 +97,7 @@ void LayerDim::onDraw(const Region& clip) const
             glEnable(GL_BLEND);
             glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
             glColor4x(0, 0, 0, alpha);
-            glVertexPointer(2, GL_FIXED, 0, mVertices);
+            glVertexPointer(2, GL_FLOAT, 0, mVerticesf);
             Rect r;
             while (iterator.iterate(&r)) {
                 const GLint sy = fbHeight - (r.top + r.height());
