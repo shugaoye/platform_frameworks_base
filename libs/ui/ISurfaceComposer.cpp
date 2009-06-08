@@ -144,6 +144,15 @@ public:
         return reply.readInt32();
     }
 
+    virtual status_t authGPU(uint32_t magic)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(ISurfaceComposer::getInterfaceDescriptor());
+        data.writeInt32(magic);
+        remote()->transact(BnSurfaceComposer::AUTH_GPU, data, &reply);
+        return reply.readInt32();
+    }
+
     virtual void signal() const
     {
         Parcel data, reply;
@@ -203,6 +212,10 @@ status_t BnSurfaceComposer::onTransact(
         } break;
         case REVOKE_GPU: {
             reply->writeInt32( revokeGPU() );
+        } break;
+        case AUTH_GPU: {
+	    uint32_t magic = (uint32_t) data.readInt32();
+            reply->writeInt32( authGPU(magic) );
         } break;
         case SIGNAL: {
             signal();

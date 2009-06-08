@@ -72,6 +72,8 @@ public:
     uint32_t    getFlags() const;
     void        makeCurrent() const;
 
+    int         authMagic(uint32_t magic) const;
+
     uint32_t getPageFlipCount() const;
     void getDisplaySurface(copybit_image_t* img) const;
     void getDisplaySurface(GGLSurface* fb) const;

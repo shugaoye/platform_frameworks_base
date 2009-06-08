@@ -253,6 +253,12 @@ status_t SurfaceFlinger::revokeGPU()
     return mGPU->friendlyRevoke();
 }
 
+status_t SurfaceFlinger::authGPU(uint32_t magic)
+{
+	const DisplayHardware& hw(graphicPlane(0).displayHardware());
+	return hw.authMagic(magic);
+}
+
 sp<ISurfaceFlingerClient> SurfaceFlinger::createConnection()
 {
     Mutex::Autolock _l(mStateLock);

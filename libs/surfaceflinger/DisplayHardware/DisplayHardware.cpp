@@ -344,6 +344,11 @@ void DisplayHardware::makeCurrent() const
     eglMakeCurrent(mDisplay, mSurface, mSurface, mContext);
 }
 
+int DisplayHardware::authMagic(uint32_t magic) const
+{
+    return 0;
+}
+
 void DisplayHardware::copyFrontToImage(const copybit_image_t& front) const {
     mDisplaySurface->copyFrontToImage(front);
 }
