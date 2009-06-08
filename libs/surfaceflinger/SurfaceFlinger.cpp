@@ -1736,6 +1736,7 @@ sp<ISurface> BClient::createSurface(
         DisplayID display, uint32_t w, uint32_t h, PixelFormat format,
         uint32_t flags)
 {
+    /* no need to memory_gem_promote as the surface is not used locally */
     return mFlinger->createSurface(mId, pid, params, display, w, h, format, flags);
 }
 

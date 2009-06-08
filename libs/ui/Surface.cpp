@@ -29,6 +29,7 @@
 #include <utils/IPCThreadState.h>
 #include <utils/IMemory.h>
 #include <utils/Log.h>
+#include <utils/MemoryGem.h>
 
 #include <ui/ISurface.h>
 #include <ui/Surface.h>
@@ -192,6 +193,11 @@ sp<Surface> Surface::readFromParcel(Parcel* parcel)
 
     if (clientBinder != NULL)
         client = SurfaceComposerClient::clientForConnection(clientBinder);
+
+    if (flags & ISurfaceComposer::eGPU) {
+        memory_gem_promote(data.heap[0]);
+        memory_gem_promote(data.heap[1]);
+    }
 
     return new Surface(client, surface, data, 0, 0, format, flags, false);
 }
