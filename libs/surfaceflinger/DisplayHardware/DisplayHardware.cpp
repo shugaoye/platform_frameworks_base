@@ -26,6 +26,7 @@
 #include <utils/Log.h>
 
 #include <ui/EGLDisplaySurface.h>
+#include <ui/EGLKMSSurface.h>
 
 #include <GLES/gl.h>
 #include <EGL/eglext.h>
@@ -123,6 +124,9 @@ void DisplayHardware::init(uint32_t dpy)
     EGLContext context;
     mFlags = 0;
 
+    /* create KMS surface early so that it is DRM master */
+    mDisplaySurface = new EGLKMSSurface();
+
     // TODO: all the extensions below should be queried through
     // eglGetProcAddress().
 
@@ -159,8 +163,6 @@ void DisplayHardware::init(uint32_t dpy)
     /*
      * Create our main surface
      */
-
-    mDisplaySurface = new EGLDisplaySurface();
 
     surface = eglCreateWindowSurface(display, config, mDisplaySurface.get(), NULL);
     //checkEGLErrors("eglCreateDisplaySurfaceANDROID");
@@ -217,7 +219,8 @@ void DisplayHardware::init(uint32_t dpy)
     LOGI("vendor    : %s", glGetString(GL_VENDOR));
     LOGI("renderer  : %s", glGetString(GL_RENDERER));
     LOGI("version   : %s", glGetString(GL_VERSION));
-    LOGI("extensions: %s", gl_extensions);
+    //LOGI("extensions: %s", gl_extensions);
+    LOGI("extensions: %s", "too many to list");
 
     if (strstr(gl_extensions, "GL_ARB_texture_non_power_of_two")) {
         mFlags |= NPOT_EXTENSION;
@@ -228,6 +231,8 @@ void DisplayHardware::init(uint32_t dpy)
     if (strstr(gl_extensions, "GL_ANDROID_direct_texture")) {
         mFlags |= DIRECT_TEXTURE;
     }
+
+    LOGI("DisplayHardware flags 0x%x", mFlags);
 
     // Unbind the context from this thread
     eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -346,7 +351,7 @@ void DisplayHardware::makeCurrent() const
 
 int DisplayHardware::authMagic(uint32_t magic) const
 {
-    return 0;
+    return mDisplaySurface->authMagic((drm_magic_t) magic);
 }
 
 void DisplayHardware::copyFrontToImage(const copybit_image_t& front) const {

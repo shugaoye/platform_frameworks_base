@@ -34,6 +34,7 @@ struct copybit_t;
 namespace android {
 
 class EGLDisplaySurface;
+class EGLKMSSurface;
 
 class DisplayHardware : public DisplayHardwareBase
 {
@@ -105,7 +106,7 @@ private:
     PixelFormat     mFormat;
     uint32_t        mFlags;
     mutable Region  mDirty;
-    sp<EGLDisplaySurface> mDisplaySurface;
+    sp<EGLKMSSurface> mDisplaySurface;
     copybit_device_t*     mBlitEngine;
     overlay_control_device_t* mOverlayEngine;
 };

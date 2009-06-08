@@ -48,6 +48,7 @@
 #endif
 
 #include "GPUHardware/GPUHardware.h"
+#include "GPUHardware/GEMHardware.h"
 
 
 /* 
@@ -573,7 +574,8 @@ void GPUHardware::binderDied(const wp<IBinder>& who)
 
 sp<GPUHardwareInterface> GPUFactory::getGPU()
 {
-    return new GPUHardware();
+    return new GEMHardware();
+    //return new GPUHardware();
 }
 
 // ---------------------------------------------------------------------------
