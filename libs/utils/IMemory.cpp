@@ -69,7 +69,8 @@ static sp<HeapCache> gHeapCache = new HeapCache();
 /******************************************************************************/
 
 enum {
-    HEAP_ID = IBinder::FIRST_CALL_TRANSACTION
+    HEAP_ID = IBinder::FIRST_CALL_TRANSACTION,
+    HEAP_ID_GEM
 };
 
 class BpMemoryHeap : public BpInterface<IMemoryHeap>
@@ -366,6 +367,14 @@ status_t BnMemoryHeap::onTransact(
             reply->writeFileDescriptor(getHeapID());
             reply->writeInt32(getSize());
             reply->writeInt32(getFlags());
+            return NO_ERROR;
+        } break;
+       case HEAP_ID_GEM: {
+            CHECK_INTERFACE(IMemoryHeap, data, reply);
+            reply->writeFileDescriptor(getHeapID());
+            reply->writeInt32(getSize());
+            reply->writeInt32(getFlags());
+            reply->writeInt32(getGemName());
             return NO_ERROR;
         } break;
         default:
