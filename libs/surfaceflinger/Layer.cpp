@@ -111,11 +111,16 @@ status_t Layer::setBuffers( Client* client,
     if (flags & ISurfaceComposer::eGPU) {
         // FIXME: this value should come from the h/w
         alignment = 8; 
+
+	/*
+	 * not needed for i915
+	 *
         // FIXME: this is msm7201A specific, as its GPU only supports
         // BGRA_8888.
         if (format == PIXEL_FORMAT_RGBA_8888) {
             format = PIXEL_FORMAT_BGRA_8888;
         }
+	*/
     }
 
     mSecure = (flags & ISurfaceComposer::eSecure) ? true : false;
