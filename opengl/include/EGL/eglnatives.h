@@ -214,6 +214,7 @@ struct egl_native_pixmap_t
  */
 
 struct egl_native_window_t* android_createDisplaySurface();
+struct egl_native_window_t* android_createKMSSurface();
 
 /*****************************************************************************/
 
