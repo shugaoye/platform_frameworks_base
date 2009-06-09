@@ -99,11 +99,10 @@ LOCAL_SRC_FILES:= \
 	android_util_FileObserver.cpp \
 	android/opengl/poly_clip.cpp.arm \
 	android/opengl/util.cpp.arm \
-	android_bluetooth_Database.cpp \
 	android_bluetooth_HeadsetBase.cpp \
 	android_bluetooth_common.cpp \
 	android_bluetooth_BluetoothAudioGateway.cpp \
-	android_bluetooth_RfcommSocket.cpp \
+	android_bluetooth_BluetoothSocket.cpp \
 	android_bluetooth_ScoSocket.cpp \
 	android_server_BluetoothDeviceService.cpp \
 	android_server_BluetoothEventLoop.cpp \
