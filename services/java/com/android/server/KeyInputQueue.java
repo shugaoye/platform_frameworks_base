@@ -291,7 +291,8 @@ public abstract class KeyInputQueue {
                                             ((ev.flags & WindowManagerPolicy.FLAG_WOKE_HERE) != 0)
                                              ? KeyEvent.FLAG_WOKE_HERE : 0));
                         } else if (ev.type == RawInputEvent.EV_KEY) {
-                            if (ev.scancode == RawInputEvent.BTN_TOUCH &&
+                            if ((ev.scancode == RawInputEvent.BTN_TOUCH ||
+                                    ev.scancode == RawInputEvent.BTN_MOUSE) &&
                                     (classes&RawInputEvent.CLASS_TOUCHSCREEN) != 0) {
                                 di.mAbs.changed = true;
                                 di.mAbs.down = ev.value != 0;
@@ -308,10 +309,12 @@ public abstract class KeyInputQueue {
     
                         } else if (ev.type == RawInputEvent.EV_ABS &&
                                 (classes&RawInputEvent.CLASS_TOUCHSCREEN) != 0) {
-                            if (ev.scancode == RawInputEvent.ABS_X) {
+                            if (ev.scancode == RawInputEvent.ABS_X ||
+                                    ev.scancode == RawInputEvent.ABS_Z) {
                                 di.mAbs.changed = true;
                                 di.mAbs.x = ev.value;
-                            } else if (ev.scancode == RawInputEvent.ABS_Y) {
+                            } else if (ev.scancode == RawInputEvent.ABS_Y ||
+                                    ev.scancode == RawInputEvent.ABS_RX) {
                                 di.mAbs.changed = true;
                                 di.mAbs.y = ev.value;
                             } else if (ev.scancode == RawInputEvent.ABS_PRESSURE) {
