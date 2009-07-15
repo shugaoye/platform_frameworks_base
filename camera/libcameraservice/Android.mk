@@ -1,34 +1,26 @@
 LOCAL_PATH:= $(call my-dir)
 
 #
-# Set USE_CAMERA_STUB for non-emulator and non-simulator builds, if you want
-# the camera service to use the fake camera.  For emulator or simulator builds,
-# we always use the fake camera.
-
-ifeq ($(USE_CAMERA_STUB),)
-USE_CAMERA_STUB:=false
-ifneq ($(filter sooner generic sim,$(TARGET_DEVICE)),)
-USE_CAMERA_STUB:=true
-endif #libcamerastub
-endif
-
-ifeq ($(USE_CAMERA_STUB),true)
-#
-# libcamerastub
+# libcamera
 #
 
 include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:=               \
-    CameraHardwareStub.cpp      \
-    FakeCamera.cpp
+    CameraHardware.cpp         \
+    V4L2Camera.cpp
 
-LOCAL_MODULE:= libcamerastub
+LOCAL_MODULE:= libcamera
 
-LOCAL_SHARED_LIBRARIES:= libui
+LOCAL_SHARED_LIBRARIES:= \
+    libui \
+    libutils \
+    libcutils
 
-include $(BUILD_STATIC_LIBRARY)
-endif # USE_CAMERA_STUB
+LOCAL_STATIC_LIBRARIES:= \
+    libjpeg
+
+include $(BUILD_SHARED_LIBRARY)
 
 #
 # libcameraservice
