@@ -21,9 +21,11 @@
 
 #include <linux/videodev.h>
 
-#include <jpeglib.h>
-
 #include "V4L2Camera.h"
+
+extern "C" { /* Android jpeglib.h missed extern "C" */
+#include <jpeglib.h>
+}
 
 namespace android {
 
