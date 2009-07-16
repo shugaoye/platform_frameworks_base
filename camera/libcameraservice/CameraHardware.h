@@ -25,7 +25,6 @@
 #include <utils/threads.h>
 
 #include <sys/ioctl.h>
-#include <jpeglib.h>
 #include "V4L2Camera.h"
 
 namespace android {

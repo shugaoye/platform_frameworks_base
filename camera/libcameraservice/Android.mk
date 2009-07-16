@@ -10,6 +10,8 @@ LOCAL_SRC_FILES:=               \
     CameraHardware.cpp         \
     V4L2Camera.cpp
 
+LOCAL_CFLAGS += -Iexternal/jpeg
+
 LOCAL_MODULE:= libcamera
 
 LOCAL_SHARED_LIBRARIES:= \
