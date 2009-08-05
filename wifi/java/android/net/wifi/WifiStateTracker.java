@@ -322,11 +322,6 @@ public class WifiStateTracker extends NetworkStateTracker {
 
         mSettingsObserver = new SettingsObserver(new Handler());
 
-        mInterfaceName = SystemProperties.get("wlan.interface", "wlan0");
-        sDnsPropNames = new String[] {
-            "dhcp." + mInterfaceName + ".dns1",
-            "dhcp." + mInterfaceName + ".dns2"
-        };
         mBatteryStats = IBatteryStats.Stub.asInterface(ServiceManager.getService("batteryinfo"));
 
     }
@@ -696,6 +691,11 @@ public class WifiStateTracker extends NetworkStateTracker {
 
         switch (msg.what) {
             case EVENT_SUPPLICANT_CONNECTION:
+                mInterfaceName = SystemProperties.get("wlan.interface", "wlan0");
+                sDnsPropNames = new String[] {
+                    "dhcp." + mInterfaceName + ".dns1",
+                    "dhcp." + mInterfaceName + ".dns2"
+                };
                 mRunState = RUN_STATE_RUNNING;
                 noteRunState();
                 checkUseStaticIp();
