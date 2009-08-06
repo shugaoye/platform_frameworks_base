@@ -1272,6 +1272,8 @@ public class WifiStateTracker extends NetworkStateTracker {
      */
     public void resetConnections(boolean disableInterface) {
         if (LOCAL_LOGD) Log.d(TAG, "Reset connections and stopping DHCP");
+        if (mInterfaceName == null)
+            return;
         mHaveIpAddress = false;
         mObtainingIpAddress = false;
         mWifiInfo.setIpAddress(0);
