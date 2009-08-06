@@ -1220,6 +1220,7 @@ public class WifiStateTracker extends NetworkStateTracker {
      * using the interface, stopping DHCP, and disabling the interface.
      */
     public void resetInterface() {
+        if (mInterfaceName == null) return;
         mHaveIpAddress = false;
         mObtainingIpAddress = false;
         mWifiInfo.setIpAddress(0);
