@@ -131,7 +131,7 @@ status_t BootAnimation::readyToRun() {
 
     // create the native surface
     sp<Surface> s = session()->createSurface(getpid(), 0, dinfo.w, dinfo.h,
-            PIXEL_FORMAT_RGB_565);
+            PIXEL_FORMAT_RGB_565, ISurfaceComposer::eGPU);
     session()->openTransaction();
     s->setLayer(0x40000000);
     session()->closeTransaction();
@@ -167,12 +167,49 @@ status_t BootAnimation::readyToRun() {
     glEnable(GL_TEXTURE_2D);
     glTexEnvx(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
 
+    glViewport(0, 0, mWidth, mHeight);
+    glOrthof(0.0f, (GLfloat) mWidth, 0.0f, (GLfloat) mHeight, -1.0f, 1.0f);
+
     return NO_ERROR;
 }
 
 void BootAnimation::requestExit() {
     mBarrier.open();
     Thread::requestExit();
+}
+
+static void DrawTex(GLfloat x, GLfloat y, GLfloat z, GLfloat w, GLfloat h)
+{
+	const GLfloat texs[4][2] = {
+		{ 0.0f, 0.0f },
+		{ 1.0f, 0.0f },
+		{ 1.0f, 1.0f },
+		{ 0.0f, 1.0f },
+	};
+	GLfloat verts[4][3];
+
+	verts[0][0] = x;
+	verts[0][1] = y;
+	verts[0][2] = z;
+	verts[1][0] = x + w;
+	verts[1][1] = y;
+	verts[1][2] = z;
+	verts[2][0] = x + w;
+	verts[2][1] = y + h;
+	verts[2][2] = z;
+	verts[3][0] = x;
+	verts[3][1] = y + h;
+	verts[3][2] = z;
+
+	glVertexPointer(3, GL_FLOAT, 0, verts);
+	glTexCoordPointer(2, GL_FLOAT, 0, texs);
+	glEnableClientState(GL_VERTEX_ARRAY);
+	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+
+	glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+	glDisableClientState(GL_VERTEX_ARRAY);
+	glDisableClientState(GL_TEXTURE_COORD_ARRAY);
 }
 
 bool BootAnimation::threadLoop() {
@@ -220,12 +257,12 @@ bool BootAnimation::android() {
 
         glDisable(GL_BLEND);
         glBindTexture(GL_TEXTURE_2D, mAndroid[1].name);
-        glDrawTexiOES(x,                 yc, 0, mAndroid[1].w, mAndroid[1].h);
-        glDrawTexiOES(x + mAndroid[1].w, yc, 0, mAndroid[1].w, mAndroid[1].h);
+	DrawTex(x,                 yc, 0, mAndroid[1].w, mAndroid[1].h);
+	DrawTex(x + mAndroid[1].w, yc, 0, mAndroid[1].w, mAndroid[1].h);
 
         glEnable(GL_BLEND);
         glBindTexture(GL_TEXTURE_2D, mAndroid[0].name);
-        glDrawTexiOES(xc, yc, 0, mAndroid[0].w, mAndroid[0].h);
+	DrawTex(xc, yc, 0, mAndroid[0].w, mAndroid[0].h);
 
         eglSwapBuffers(mDisplay, mSurface);
         

@@ -209,8 +209,7 @@ void SurfaceFlinger::init()
     property_get("debug.sf.showfps", value, "0");
     mDebugFps = atoi(value);
     property_get("debug.sf.nobootanimation", value, "0");
-    /* do not show boot animation as eagle is not thread-safe */
-    mDebugNoBootAnimation = true;
+    mDebugNoBootAnimation = atoi(value);
 
     LOGI_IF(mDebugRegion,           "showupdates enabled");
     LOGI_IF(mDebugCpu,              "showcpu enabled");
