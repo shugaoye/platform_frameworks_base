@@ -637,7 +637,12 @@ int EventHub::open_device(const char *deviceName)
         bool defaultKeymap = false;
         if (access(keylayoutFilename, R_OK)) {
             snprintf(keylayoutFilename, sizeof(keylayoutFilename),
-                     "%s/usr/keylayout/%s", root, "qwerty.kl");
+#ifdef __i386__
+#define DEFAULT_KEYLAYOUT "AT_Translated_Set_2_keyboard.kl"
+#else
+#define DEFAULT_KEYLAYOUT "qwerty.kl"
+#endif
+                     "%s/usr/keylayout/%s", root, DEFAULT_KEYLAYOUT);
             defaultKeymap = true;
         }
         device->layoutMap->load(keylayoutFilename);
