@@ -158,6 +158,7 @@ extern int register_android_backup_BackupDataInput(JNIEnv *env);
 extern int register_android_backup_BackupDataOutput(JNIEnv *env);
 extern int register_android_backup_FileBackupHelperBase(JNIEnv *env);
 extern int register_android_backup_BackupHelperDispatcher(JNIEnv *env);
+extern int register_android_net_ethernet_EthernetManager(JNIEnv* env);
 
 static AndroidRuntime* gCurRuntime = NULL;
 
@@ -1105,6 +1106,7 @@ static const RegJNIRec gRegJNI[] = {
     REG_JNI(register_android_net_LocalSocketImpl),
     REG_JNI(register_android_net_NetworkUtils),
     REG_JNI(register_android_net_wifi_WifiManager),
+    REG_JNI(register_android_net_ethernet_EthernetManager),
     REG_JNI(register_android_os_MemoryFile),
     REG_JNI(register_com_android_internal_os_ZygoteInit),
     REG_JNI(register_android_hardware_Camera),

@@ -116,13 +116,14 @@ public class ConnectivityManager
 
     public static final int TYPE_MOBILE = 0;
     public static final int TYPE_WIFI   = 1;
+    public static final int TYPE_ETH    = 2;
 
     public static final int DEFAULT_NETWORK_PREFERENCE = TYPE_WIFI;
 
     private IConnectivityManager mService;
 
     static public boolean isNetworkTypeValid(int networkType) {
-        return networkType == TYPE_WIFI || networkType == TYPE_MOBILE;
+        return networkType == TYPE_WIFI || networkType == TYPE_MOBILE || networkType == TYPE_ETH;
     }
 
     public void setNetworkPreference(int preference) {

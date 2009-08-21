@@ -28,6 +28,7 @@ import android.net.MobileDataStateTracker;
 import android.net.NetworkInfo;
 import android.net.NetworkStateTracker;
 import android.net.wifi.WifiStateTracker;
+import android.net.ethernet.EthernetStateTracker;
 import android.os.Binder;
 import android.os.Handler;
 import android.os.Looper;
@@ -61,6 +62,7 @@ public class ConnectivityService extends IConnectivityManager.Stub {
     private WifiStateTracker mWifiStateTracker;
     private MobileDataStateTracker mMobileDataStateTracker;
     private WifiWatchdogService mWifiWatchdogService;
+    private EthernetStateTracker mEthernetStateTracker;
 
     private Context mContext;
     private int mNetworkPreference;
@@ -117,7 +119,7 @@ public class ConnectivityService extends IConnectivityManager.Stub {
     private ConnectivityService(Context context) {
         if (DBG) Log.v(TAG, "ConnectivityService starting up");
         mContext = context;
-        mNetTrackers = new NetworkStateTracker[2];
+        mNetTrackers = new NetworkStateTracker[3];
         Handler handler = new MyHandler();
         
         mNetworkPreference = getPersistedNetworkPreference();
@@ -138,6 +140,12 @@ public class ConnectivityService extends IConnectivityManager.Stub {
         mMobileDataStateTracker = new MobileDataStateTracker(context, handler);
         mNetTrackers[ConnectivityManager.TYPE_MOBILE] = mMobileDataStateTracker;
         
+        if (DBG) Log.v(TAG, "Starting Ethernet Service");
+        mEthernetStateTracker = new EthernetStateTracker(context,handler);
+        EthernetService ethService = new EthernetService(context, mEthernetStateTracker);
+        ServiceManager.addService(Context.ETH_SERVICE, ethService);
+        mNetTrackers[ConnectivityManager.TYPE_ETH] = mEthernetStateTracker;
+
         mActiveNetwork = null;
         mNumDnsEntries = 0;
 
