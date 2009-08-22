@@ -52,16 +52,19 @@ public class EthernetMonitor {
                  */
                 String [] events = eventName.split(":");
                 index = events.length;
+                if (index < 2)
+			continue;
                 i = 0;
-                while (index != 0 && i < index) {
+                while (index != 0 && i < index-1) {
 
 			int event = 0;
+			Log.i(TAG,"dev: " + events[i] + " ev " + events[i+1]);
 			int cmd =Integer.parseInt(events[i+1]);
 			if ( cmd ==  RM_ADDR || cmd == DEL_LINK) {
 				event = DISCONNECTED;
 				handleEvent(events[i],event);
 			}
-			else if (cmd == ADD_ADDR || cmd == NEW_LINK) {
+			else if (cmd == ADD_ADDR ) {
 				event = CONNECTED;
 				handleEvent(events[i],event);
 			}
@@ -79,6 +82,7 @@ public class EthernetMonitor {
             switch (event) {
                 case DISCONNECTED:
 			mTracker.notifyStateChange(ifname,NetworkInfo.DetailedState.DISCONNECTED);
+			mTracker.ClearConntectUpdateWating();
                     break;
                 case CONNECTED:
 			if (mTracker.waitingForConnectUpdate()) {

@@ -28,13 +28,6 @@ public class EthernetService extends IEthernetManager.Stub{
 		mContext = context;
 
 		isEthEnabled = getPersistedEthEnabled();
-		if (isEthEnabled) {
-			try {
-				mTracker.resetInterface();
-			} catch (UnknownHostException e) {
-				Log.e(TAG, "Wrong ethernet configuration");
-			}
-		}
 		Log.i(TAG,"Etherent dev enabled " + isEthEnabled );
 		setEthState(isEthEnabled ? EthernetManager.ETH_STATE_ENABLED:EthernetManager.ETH_STATE_DISABLED);
 		Log.i(TAG, "Trigger the ethernet monitor");

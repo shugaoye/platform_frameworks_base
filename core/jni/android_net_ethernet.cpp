@@ -123,6 +123,7 @@ namespace android {
             }
             result = rbuf;
             left = 4096;
+            rbuf[0] = '\0';
             for (nh = (struct nlmsghdr *) buff; NLMSG_OK (nh, len);
                  nh = NLMSG_NEXT (nh, len))
             {
@@ -139,6 +140,7 @@ namespace android {
                     goto error;
                 }
 
+                LOGI(" event :%d  found",nh->nlmsg_type);
                 if (nh->nlmsg_type == RTM_DELLINK ||
                     nh->nlmsg_type == RTM_NEWLINK ||
                     nh->nlmsg_type == RTM_DELADDR ||
@@ -154,7 +156,8 @@ namespace android {
 
             }
         }
-        LOGI("poll state :%s",rbuf);
+        rbuf[4096 - left] = '\0';
+        LOGI("poll state :%s, left:%d",rbuf, left);
     error:
         if(buff)
             free(buff);

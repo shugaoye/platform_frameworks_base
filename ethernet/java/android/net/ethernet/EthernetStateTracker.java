@@ -91,6 +91,7 @@ public class EthernetStateTracker extends NetworkStateTracker {
 			Log.i(TAG, "trigger dhcp for device " + info.getIfName());
 	            if (!mIfEnabledPending) {
 			mIfEnabledPending = true;
+			Log.i(TAG, "pass message to DHCP");
 	                mDhcpTarget.sendEmptyMessage(EVENT_DHCP_START);
 	            }
 	        } else {
@@ -121,7 +122,7 @@ public class EthernetStateTracker extends NetworkStateTracker {
 
 	public void ClearConntectUpdateWating()
 	{
-		mIfEnabledPending = true;
+		mIfEnabledPending = false;
 	}
 
 
@@ -129,38 +130,41 @@ public class EthernetStateTracker extends NetworkStateTracker {
 		/*
 		 * This will guide us to enabled the enabled device
 		 */
-		EthernetDevInfo info = mEM.getSavedEthConfig();
-		if (info != null && mEM.ethConfigured())
-		{
+		if (mEM != null) {
+			EthernetDevInfo info = mEM.getSavedEthConfig();
+			if (info != null && mEM.ethConfigured())
+			{
 
-			mInterfaceName = info.getIfName();
-			sDnsPropNames = new String[] {
-                    "dhcp." + mInterfaceName + ".dns1",
-                    "dhcp." + mInterfaceName + ".dns2"
-                };
-			Log.i(TAG, "reset device " + mInterfaceName);
-			NetworkUtils.resetConnections(mInterfaceName);
-			 // Stop DHCP
-	        if (mDhcpTarget != null) {
-	            mDhcpTarget.removeMessages(EVENT_DHCP_START);
-	        }
-	        if (!NetworkUtils.stopDhcp(mInterfaceName)) {
-	            Log.e(TAG, "Could not stop DHCP");
-	        }
-	        configureInterface(info);
+				mInterfaceName = info.getIfName();
+				sDnsPropNames = new String[] {
+	                    "dhcp." + mInterfaceName + ".dns1",
+	                    "dhcp." + mInterfaceName + ".dns2"
+	                };
+				Log.i(TAG, "reset device " + mInterfaceName);
+				NetworkUtils.resetConnections(mInterfaceName);
+				 // Stop DHCP
+		        if (mDhcpTarget != null) {
+		            mDhcpTarget.removeMessages(EVENT_DHCP_START);
+		        }
+		        if (!NetworkUtils.stopDhcp(mInterfaceName)) {
+		            Log.e(TAG, "Could not stop DHCP");
+		        }
+		        configureInterface(info);
+			}
 		}
 		return true;
 	}
 
 	@Override
 	public String[] getNameServers() {
+		Log.i(TAG,"get dns from " + sDnsPropNames);
 		 return getNameServerList(sDnsPropNames);
 	}
 
 	@Override
 	public String getTcpBufferSizesPropName() {
 		// TODO Auto-generated method stub
-		return null;
+		return "net.tcp.buffersize.default";
 	}
 
 	public void StartPolling() {
@@ -193,8 +197,16 @@ public class EthernetStateTracker extends NetworkStateTracker {
 	@Override
 	public void startMonitoring() {
 		Log.i(TAG,"start to monitor the ethernet devices");
-		if (mServiceStarted )
+		if (mServiceStarted )	{
 			mEM = (EthernetManager)mContext.getSystemService(Context.ETH_SERVICE);
+			if (mEM.getEthState()==mEM.ETH_STATE_ENABLED) {
+				try {
+					resetInterface();
+				} catch (UnknownHostException e) {
+					Log.e(TAG, "Wrong ethernet configuration");
+				}
+			}
+		}
 
 	}
 
@@ -221,7 +233,6 @@ public class EthernetStateTracker extends NetworkStateTracker {
 	public void handleMessage(Message msg) {
         switch (msg.what) {
         case EVENT_INTERFACE_CONFIGURATION_SUCCEEDED:
-		// Do nothing for now
 		break;
         case EVENT_INTERFACE_CONFIGURATION_FAILED:
 		//start to retry ?
@@ -231,11 +242,11 @@ public class EthernetStateTracker extends NetworkStateTracker {
 	}
 
 	private class DhcpHandler extends Handler {
-		private Handler mTarget;
+		private Handler mTrackerTarget;
 
 		 public DhcpHandler(Looper looper, Handler target) {
 	            super(looper);
-	            mTarget = target;
+	            mTrackerTarget = target;
 
 	        }
 
@@ -250,18 +261,24 @@ public class EthernetStateTracker extends NetworkStateTracker {
 	                           Log.v(TAG, "DhcpHandler: DHCP request succeeded");
 	                      } else {
 	                          event = EVENT_INTERFACE_CONFIGURATION_FAILED;
+	                          mIfEnabledPending = false;
 	                          Log.i(TAG, "DhcpHandler: DHCP request failed: " +
 	                              NetworkUtils.getDhcpError());
 	                      }
+	                      mTrackerTarget.sendEmptyMessage(event);
 	                      break;
 	            }
+
 		  }
 	}
 
 	public void notifyStateChange(String ifname,DetailedState state) {
-		Log.i(TAG, "report new state " + state.toString() + "on dev " + ifname);
+		Log.i(TAG, "report new state " + state.toString() + " on dev " + ifname);
 		if (ifname.equals(mInterfaceName)) {
+			Log.i(TAG, "update network state tracker");
 			setDetailedState(state);
+			mTarget.sendEmptyMessage(EVENT_CONFIGURATION_CHANGED);
+
 		}
 	}
 }

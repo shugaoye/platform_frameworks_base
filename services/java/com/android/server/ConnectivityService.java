@@ -47,7 +47,7 @@ import java.io.PrintWriter;
  */
 public class ConnectivityService extends IConnectivityManager.Stub {
 
-    private static final boolean DBG = false;
+    private static final boolean DBG = true;
     private static final String TAG = "ConnectivityService";
 
     // Event log tags (must be in sync with event-log-tags)
@@ -210,15 +210,41 @@ public class ConnectivityService extends IConnectivityManager.Stub {
         for (NetworkStateTracker t : mNetTrackers) {
             if (t == mActiveNetwork) {
                 int netType = t.getNetworkInfo().getType();
-                int otherNetType = ((netType == ConnectivityManager.TYPE_WIFI) ?
-                        ConnectivityManager.TYPE_MOBILE :
-                        ConnectivityManager.TYPE_WIFI);
 
                 if (t.getNetworkInfo().getType() != mNetworkPreference) {
-                    NetworkStateTracker otherTracker = mNetTrackers[otherNetType];
-                    if (otherTracker.isAvailable()) {
-                        teardown(t);
-                    }
+			NetworkStateTracker otherTracker;
+			switch (netType) {
+			case ConnectivityManager.TYPE_WIFI:
+				otherTracker = mNetTrackers[ConnectivityManager.TYPE_MOBILE];
+                        if (otherTracker.isAvailable()) {
+                            teardown(t);
+                        }
+                        otherTracker = mNetTrackers[ConnectivityManager.TYPE_ETH];
+                        if (otherTracker.isAvailable()) {
+                            teardown(t);
+                        }
+				break;
+			case ConnectivityManager.TYPE_MOBILE:
+				otherTracker = mNetTrackers[ConnectivityManager.TYPE_WIFI];
+                        if (otherTracker.isAvailable()) {
+                            teardown(t);
+                        }
+                        otherTracker = mNetTrackers[ConnectivityManager.TYPE_ETH];
+                        if (otherTracker.isAvailable()) {
+                            teardown(t);
+                        }
+				break;
+			case ConnectivityManager.TYPE_ETH:
+				otherTracker = mNetTrackers[ConnectivityManager.TYPE_MOBILE];
+                        if (otherTracker.isAvailable()) {
+                            teardown(t);
+                        }
+                        otherTracker = mNetTrackers[ConnectivityManager.TYPE_WIFI];
+                        if (otherTracker.isAvailable()) {
+                            teardown(t);
+                        }
+				break;
+			}
                 }
             }
         }
@@ -411,10 +437,20 @@ public class ConnectivityService extends IConnectivityManager.Stub {
             return;
 
         NetworkStateTracker newNet;
-        if (info.getType() == ConnectivityManager.TYPE_MOBILE) {
-            newNet = mWifiStateTracker;
-        } else /* info().getType() == TYPE_WIFI */ {
-            newNet = mMobileDataStateTracker;
+        switch (info.getType())
+        {
+        case ConnectivityManager.TYPE_MOBILE:
+		newNet = mWifiStateTracker;
+		break;
+        case ConnectivityManager.TYPE_WIFI:
+		newNet = mEthernetStateTracker; //Fix me here, we may need to get a better way to do this
+		break;
+        case ConnectivityManager.TYPE_ETH:
+		newNet = mWifiStateTracker;
+		break;
+        default:
+		newNet=mWifiStateTracker;
+
         }
 
         /**
@@ -637,21 +673,24 @@ public class ConnectivityService extends IConnectivityManager.Stub {
         int index = 1;
         String lastDns = "";
         int numConnectedNets = 0;
-        int incrValue = ConnectivityManager.TYPE_MOBILE - ConnectivityManager.TYPE_WIFI;
-        int stopValue = ConnectivityManager.TYPE_MOBILE + incrValue;
 
-        for (int netType = ConnectivityManager.TYPE_WIFI; netType != stopValue; netType += incrValue) {
+        for (int netType = ConnectivityManager.TYPE_MOBILE; netType <= ConnectivityManager.TYPE_ETH;
+		netType ++) {
             NetworkStateTracker nt = mNetTrackers[netType];
+
             if (nt.getNetworkInfo().isConnected() && !nt.isTeardownRequested()) {
                 ++numConnectedNets;
                 String[] dnsList = nt.getNameServers();
                 for (int i = 0; i < dnsList.length && dnsList[i] != null; i++) {
                     // skip duplicate entries
                     if (!dnsList[i].equals(lastDns)) {
+			Log.i(TAG,"Set dns " + index + " to " + dnsList[i]);
                         SystemProperties.set("net.dns" + index++, dnsList[i]);
                         lastDns = dnsList[i];
                     }
                 }
+            } else {
+		Log.i(TAG,"nettype " + netType + "info is not connection : " + nt.getNetworkInfo());
             }
         }
         // Null out any DNS properties that are no longer used
