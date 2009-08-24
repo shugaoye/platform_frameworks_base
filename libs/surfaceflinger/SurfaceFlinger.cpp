@@ -789,7 +789,7 @@ void SurfaceFlinger::computeVisibleRegions(
         // updade aboveOpaqueLayers/aboveCoveredLayers for next (lower) layer
         aboveOpaqueLayers.orSelf(opaqueRegion);
         aboveCoveredLayers.orSelf(visibleRegion);
-        
+
         // Store the visible region is screen space
         layer->setVisibleRegion(visibleRegion);
         layer->setCoveredRegion(coveredRegion);
