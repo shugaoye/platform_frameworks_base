@@ -82,13 +82,9 @@ public class EthernetMonitor {
             switch (event) {
                 case DISCONNECTED:
 			mTracker.notifyStateChange(ifname,NetworkInfo.DetailedState.DISCONNECTED);
-			mTracker.ClearConntectUpdateWating();
                     break;
                 case CONNECTED:
-			if (mTracker.waitingForConnectUpdate()) {
-				mTracker.notifyStateChange(ifname,NetworkInfo.DetailedState.CONNECTED);
-				mTracker.ClearConntectUpdateWating();
-			}
+			mTracker.notifyStateChange(ifname,NetworkInfo.DetailedState.CONNECTED);
                     break;
                 default:
 			mTracker.notifyStateChange(ifname,NetworkInfo.DetailedState.FAILED);

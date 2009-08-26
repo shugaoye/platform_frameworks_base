@@ -676,12 +676,14 @@ public class ConnectivityService extends IConnectivityManager.Stub {
 
         for (int netType = ConnectivityManager.TYPE_MOBILE; netType <= ConnectivityManager.TYPE_ETH;
 		netType ++) {
-            NetworkStateTracker nt = mNetTrackers[netType];
+		Log.i(TAG,"check nettype: " + netType );
+		NetworkStateTracker nt = mNetTrackers[netType];
 
             if (nt.getNetworkInfo().isConnected() && !nt.isTeardownRequested()) {
                 ++numConnectedNets;
                 String[] dnsList = nt.getNameServers();
                 for (int i = 0; i < dnsList.length && dnsList[i] != null; i++) {
+			Log.i(TAG,"chk dns " + index + " to " + dnsList[i]);
                     // skip duplicate entries
                     if (!dnsList[i].equals(lastDns)) {
 			Log.i(TAG,"Set dns " + index + " to " + dnsList[i]);

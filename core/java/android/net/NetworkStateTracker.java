@@ -103,9 +103,11 @@ public abstract class NetworkStateTracker extends Handler {
 
         for (i = 0, j = 0; i < propertyNames.length; i++) {
             String value = SystemProperties.get(propertyNames[i]);
+            Log.i(TAG, "look for dns " + propertyNames[i] + " value " + value);
             // The GSM layer sometimes sets a bogus DNS server address of
             // 0.0.0.0
             if (!TextUtils.isEmpty(value) && !TextUtils.equals(value, "0.0.0.0")) {
+		Log.i(TAG, "find value "+ value);
                 dnsAddresses[j++] = value;
             }
         }
@@ -120,6 +122,7 @@ public abstract class NetworkStateTracker extends Handler {
    public void updateNetworkSettings() {
         String key = getTcpBufferSizesPropName();
         String bufferSizes = SystemProperties.get(key);
+
 
         if (bufferSizes.length() == 0) {
             Log.e(TAG, key + " not found in system properties. Using defaults");

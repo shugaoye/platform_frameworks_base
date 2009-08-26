@@ -14,7 +14,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 
-public class EthernetService extends IEthernetManager.Stub{
+public class EthernetService<syncronized> extends IEthernetManager.Stub{
 	private Context mContext;
 	private EthernetStateTracker mTracker;
 	private String[] DevName;
@@ -35,6 +35,7 @@ public class EthernetService extends IEthernetManager.Stub{
 	}
 
 	public boolean isEthConfigured() {
+
 		final ContentResolver cr = mContext.getContentResolver();
 	    int x = Settings.Secure.getInt(cr, Settings.Secure.ETH_CONF,0);
 
@@ -43,7 +44,7 @@ public class EthernetService extends IEthernetManager.Stub{
 	    return false;
 	}
 
-	public EthernetDevInfo getSavedEthConfig() {
+	public synchronized EthernetDevInfo getSavedEthConfig() {
 
 		if (isEthConfigured() ) {
 			final ContentResolver cr = mContext.getContentResolver();
@@ -53,6 +54,7 @@ public class EthernetService extends IEthernetManager.Stub{
 			info.setIpAddress(Settings.Secure.getString(cr, Settings.Secure.ETH_IP));
 			info.setDnsAddr(Settings.Secure.getString(cr, Settings.Secure.ETH_DNS));
 			info.setNetMask(Settings.Secure.getString(cr, Settings.Secure.ETH_MASK));
+			info.setRouteAddr(Settings.Secure.getString(cr, Settings.Secure.ETH_ROUTE));
 
 			return info;
 		}
@@ -60,7 +62,7 @@ public class EthernetService extends IEthernetManager.Stub{
 	}
 
 
-	public void UpdateEthDevInfo(EthernetDevInfo info) {
+	public synchronized void UpdateEthDevInfo(EthernetDevInfo info) {
 		final ContentResolver cr = mContext.getContentResolver();
 	    Settings.Secure.putInt(cr, Settings.Secure.ETH_CONF,1);
 	    Settings.Secure.putString(cr, Settings.Secure.ETH_IFNAME, info.getIfName());
@@ -68,7 +70,7 @@ public class EthernetService extends IEthernetManager.Stub{
 	    Settings.Secure.putString(cr, Settings.Secure.ETH_MODE, info.getConnectMode());
 	    Settings.Secure.putString(cr, Settings.Secure.ETH_DNS, info.getDnsAddr());
 	    Settings.Secure.putString(cr, Settings.Secure.ETH_ROUTE, info.getRouteAddr());
-	    Settings.Secure.putString(cr, Settings.Secure.ETH_MASK,info.getRouteAddr());
+	    Settings.Secure.putString(cr, Settings.Secure.ETH_MASK,info.getNetMask());
 	    if (mEthState == EthernetManager.ETH_STATE_ENABLED) {
 		try {
 				mTracker.resetInterface();
@@ -121,12 +123,13 @@ public class EthernetService extends IEthernetManager.Stub{
 	    }
     }
 
-	private void persistEthEnabled(boolean enabled) {
+	private synchronized void persistEthEnabled(boolean enabled) {
 	    final ContentResolver cr = mContext.getContentResolver();
 	    Settings.Secure.putInt(cr, Settings.Secure.ETH_ON, enabled ? 1 : 0);
 	}
 
-	public void setEthState(int state) {
+	public synchronized void setEthState(int state) {
+		Log.i(TAG, "setEthState from " + mEthState + " to "+ state);
 
 		if (mEthState != state){
 			mEthState = state;
