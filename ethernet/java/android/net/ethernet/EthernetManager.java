@@ -8,7 +8,7 @@ import android.os.RemoteException;
 import android.util.Log;
 
 public class EthernetManager {
-	public static final String TAG = "EtherentManager";
+	public static final String TAG = "EthernetManager";
 	public static final int ETH_DEVICE_SCAN_RESULT_READY = 0;
 	public static final String ETH_STATE_CHANGED_ACTION =
 	        "android.net.ethernet.ETH_STATE_CHANGED";

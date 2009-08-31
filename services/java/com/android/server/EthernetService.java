@@ -28,7 +28,7 @@ public class EthernetService<syncronized> extends IEthernetManager.Stub{
 		mContext = context;
 
 		isEthEnabled = getPersistedEthEnabled();
-		Log.i(TAG,"Etherent dev enabled " + isEthEnabled );
+		Log.i(TAG,"Ethernet dev enabled " + isEthEnabled );
 		setEthState(isEthEnabled ? EthernetManager.ETH_STATE_ENABLED:EthernetManager.ETH_STATE_DISABLED);
 		Log.i(TAG, "Trigger the ethernet monitor");
 		mTracker.StartPolling();

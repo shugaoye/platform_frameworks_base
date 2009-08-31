@@ -18,7 +18,7 @@ import android.os.Parcel;
 import android.util.*;
 
 public class EthernetStateTracker extends NetworkStateTracker {
-	private static final String TAG="EtherenetStateTracker";
+	private static final String TAG="EthernetStateTracker";
 	private static final int EVENT_DHCP_START                        = 0;
 	private static final int EVENT_INTERFACE_CONFIGURATION_SUCCEEDED = 1;
 	private static final int EVENT_INTERFACE_CONFIGURATION_FAILED    = 2;
@@ -46,7 +46,7 @@ public class EthernetStateTracker extends NetworkStateTracker {
 
 		if(EthernetNative.initEthernetNative() != 0 )
 		{
-			Log.e(TAG,"Can not init etherent device layers");
+			Log.e(TAG,"Can not init ethernet device layers");
 			return;
 		}
 		Log.i(TAG,"Successed");
