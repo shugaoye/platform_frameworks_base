@@ -19,6 +19,7 @@
 #define LOG_TAG "ethernet"
 
 #include "jni.h"
+#include <inttypes.h>
 #include <utils/misc.h>
 #include <android_runtime/AndroidRuntime.h>
 #include <utils/Log.h>
@@ -29,6 +30,11 @@
 #include <netinet/in.h>
 #include <poll.h>
 #include <net/if_arp.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <string.h>
+#include <dirent.h>
+
 
 #define ETH_PKG_NAME "android/net/ethernet/EthernetNative"
 
@@ -46,11 +52,8 @@ namespace android {
     } dhcpInfoFieldIds;
 
     typedef struct _interface_info_t {
-        int i;                            /* interface index        */
+        unsigned int i;                            /* interface index        */
         char *name;                       /* name (eth0, eth1, ...) */
-        struct in_addr ip_addr;           /* IPv4 address (0=none)  */
-        struct in6_addr ip6_addr;         /* IPv6 address (0=none)  */
-        unsigned char mac[8];             /* MAC address            */
         struct _interface_info_t *next;
     } interface_info_t;
 
@@ -59,13 +62,15 @@ namespace android {
 #define NL_SOCK_INV      -1
 #define RET_STR_SZ       4096
 #define NL_POLL_MSG_SZ   8*1024
+#define SYSFS_PATH_MAX   256
+    static const char SYSFS_CLASS_NET[]     = "/sys/class/net";
     static int nl_socket_msg = NL_SOCK_INV;
     static struct sockaddr_nl addr_msg;
     static int nl_socket_poll = NL_SOCK_INV;
     static struct sockaddr_nl addr_poll;
     static int getinterfacename(int index, char *name, size_t len);
 
-    static interface_info_t *find_info_by_index(int index){
+    static interface_info_t *find_info_by_index(unsigned int index){
         interface_info_t *info = interfaces;
         while( info) {
             if (info->i == index)
@@ -218,130 +223,63 @@ namespace android {
         total_int ++;
     }
 
-    /**
-     * Most of the code is copied from anaconda
-     * Initialize the interfaces linked list with the interface name, MAC
-     * address, and IP addresses.  This function is only called once to
-     * initialize the structure, but may be called again if the structure
-     * should be reinitialized.
-     *
-     * @return 0 on succes, -1 on error.
-     */
     static int netlink_init_interfaces_list(void) {
-        int sock, len, alen, r;
-        char buf[4096];
-        struct nlmsghdr *nlh;
-        struct ifinfomsg *ifi;
-        struct rtattr *rta;
-        struct rtattr *tb[IFLA_MAX+1];
-        interface_info_t *intfinfo;
         int ret = -1;
+        DIR  *netdir;
+        struct dirent *de;
+        char path[SYSFS_PATH_MAX];
+        interface_info_t *intfinfo;
+        int index;
+        FILE *ifidx;
+        #define MAX_FGETS_LEN 4
+        char idx[MAX_FGETS_LEN+1];
 
-        LOGI("==>%s",__FUNCTION__);
-        if (interfaces) {
-            free_int_list();
-        }
-
-        /* send dump request */
-        if (netlink_send_dump_request(nl_socket_msg,
-                                      RTM_GETLINK, AF_NETLINK) == -1) {
-            LOGE("netlink_send_dump_request "
-                   "in netlink_init_interfaces_table");
-            goto error;
-        }
-
-        /* read back messages */
-        memset(buf, 0, sizeof(buf));
-        ret = recvfrom(nl_socket_msg, buf, sizeof(buf), 0, NULL, 0);
-        if (ret < 0) {
-            LOGE("recvfrom in netlink_init_interfaces_table");
-            goto error;
-        }
-
-        nlh = (struct nlmsghdr *) buf;
-        while (NLMSG_OK(nlh, ret)) {
-            switch (nlh->nlmsg_type) {
-            case NLMSG_DONE:
-                break;
-            case RTM_NEWLINK:
-                break;
-            default:
-                nlh = NLMSG_NEXT(nlh, ret);
-                continue;
-            }
-
-            /* RTM_NEWLINK */
-            memset(tb, 0, sizeof(tb));
-            memset(tb, 0, sizeof(struct rtattr *) * (IFLA_MAX + 1));
-
-            ifi = (struct ifinfomsg *)NLMSG_DATA(nlh);
-            rta = IFLA_RTA(ifi);
-            len = IFLA_PAYLOAD(nlh);
-
-            /* void and none are bad */
-            if (ifi->ifi_type != ARPHRD_ETHER) {
-                nlh = NLMSG_NEXT(nlh, ret);
-                continue;
-            }
-
-            while (RTA_OK(rta, len)) {
-                if (rta->rta_type <= len)
-                    tb[rta->rta_type] = rta;
-                rta = RTA_NEXT(rta, len);
-            }
-
-            alen = RTA_PAYLOAD(tb[IFLA_ADDRESS]);
-
-            /* we have an ethernet MAC addr if alen=6 */
-            if (alen == 6) {
+        if ((netdir = opendir(SYSFS_CLASS_NET)) != NULL) {
+             while((de = readdir(netdir))!=NULL) {
+                if ((!strcmp(de->d_name,".")) || (!strcmp(de->d_name,".."))
+                    ||(!strcmp(de->d_name,"lo")) || (!strcmp(de->d_name,"wmaster0")) ||
+                    (!strcmp(de->d_name,"pan0")))
+                    continue;
+                snprintf(path, SYSFS_PATH_MAX,"%s/%s/phy80211",SYSFS_CLASS_NET,de->d_name);
+                if (access(path, F_OK)) {
+                    snprintf(path, SYSFS_PATH_MAX,"%s/%s/wireless",SYSFS_CLASS_NET,de->d_name);
+                    if (!access(path, F_OK))
+                            continue;
+                } else {
+                    continue;
+                }
+                snprintf(path, SYSFS_PATH_MAX,"%s/%s/ifindex",SYSFS_CLASS_NET,de->d_name);
+                if ((ifidx = fopen(path,"r")) != NULL ) {
+                    memset(idx,0,MAX_FGETS_LEN+1);
+                    if(fgets(idx,MAX_FGETS_LEN,ifidx) != NULL) {
+                        index = strtoimax(idx,NULL,10);
+                    } else {
+                        LOGE("Can not read %s",path);
+                        continue;
+                    }
+                } else {
+                    LOGE("Can not open %s for read",path);
+                    continue;
+                }
                 /* make some room! */
                 intfinfo = (interface_info_t *)
                     malloc(sizeof(struct _interface_info_t));
                 if (intfinfo == NULL) {
                     LOGE("malloc in netlink_init_interfaces_table");
-                    ret = -1;
                     goto error;
                 }
-
-                /* copy the interface index */
-                intfinfo->i = ifi->ifi_index;
-
                 /* copy the interface name (eth0, eth1, ...) */
-                intfinfo->name = strndup((char *) RTA_DATA(tb[IFLA_IFNAME]),
-                                         sizeof(RTA_DATA(tb[IFLA_IFNAME])));
-                LOGI("interface %s found,type:%d",intfinfo->name,
-                     ifi->ifi_type);
-#if 0
-                /* copy the MAC addr */
-                memcpy(&intfinfo->mac, RTA_DATA(tb[IFLA_ADDRESS]), alen);
-
-                /* get the IPv4 address of this interface (if any) */
-                r = netlink_get_interface_ip(intfinfo->i, AF_INET, &intfinfo->ip_addr);
-                if (r == -1)
-                    intfinfo->ip_addr.s_addr = 0;
-
-                /* get the IPv6 address of this interface (if any) */
-                r = netlink_get_interface_ip(intfinfo->i,AF_INET6,
-                                             &intfinfo->ip6_addr);
-                if (r == -1)
-                    memset(intfinfo->ip6_addr.s6_addr, 0,
-                           sizeof(intfinfo->ip6_addr.s6_addr));
-#endif
+                intfinfo->name = strndup((char *) de->d_name, SYSFS_PATH_MAX);
+                intfinfo->i = index;
+                LOGI("interface %s:%d found",intfinfo->name,intfinfo->i);
                 add_int_to_list(intfinfo);
-
             }
-
-            /* next netlink msg */
-            nlh = NLMSG_NEXT(nlh, ret);
+            closedir(netdir);
         }
-        LOGI("%s exit with success",__FUNCTION__);
-        return 0;
+        ret = 0;
     error:
-        LOGE("%s exit with error",__FUNCTION__);
-        free_int_list();
         return ret;
     }
-
 
     /*
      * The netlink socket
