@@ -59,20 +59,22 @@ public class EthernetStateTracker extends NetworkStateTracker {
 	}
 
 	public boolean stopInteface() {
-		EthernetDevInfo info = mEM.getSavedEthConfig();
-		if (info != null && mEM.ethConfigured())
-		{
-			synchronized (mDhcpTarget) {
-				mInterfaceStopped = true;
-				Log.i(TAG, "stop dhcp and interface");
-				mDhcpTarget.removeMessages(EVENT_DHCP_START);
-				String ifname = info.getIfName();
+		if (mEM != null) {
+			EthernetDevInfo info = mEM.getSavedEthConfig();
+			if (info != null && mEM.ethConfigured())
+			{
+				synchronized (mDhcpTarget) {
+					mInterfaceStopped = true;
+					Log.i(TAG, "stop dhcp and interface");
+					mDhcpTarget.removeMessages(EVENT_DHCP_START);
+					String ifname = info.getIfName();
 
-				if (!NetworkUtils.stopDhcp(ifname)) {
-					Log.e(TAG, "Could not stop DHCP");
-		        }
-				NetworkUtils.resetConnections(ifname);
-				NetworkUtils.disableInterface(ifname);
+					if (!NetworkUtils.stopDhcp(ifname)) {
+						Log.e(TAG, "Could not stop DHCP");
+				        }
+					NetworkUtils.resetConnections(ifname);
+					NetworkUtils.disableInterface(ifname);
+				}
 			}
 		}
 
@@ -184,13 +186,25 @@ public class EthernetStateTracker extends NetworkStateTracker {
 	}
 	@Override
 	public boolean isAvailable() {
-		return (mEM.getTotalInterface() != 0);
+        //Only say available if we have interfaces and user did not disable us.
+		return ((mEM.getTotalInterface() != 0) && (mEM.getEthState() != EthernetManager.ETH_STATE_DISABLED));
 	}
 
 	@Override
 	public boolean reconnect() {
 		try {
-			return resetInterface();
+			synchronized (this) {
+				if (mHWConnected && mStackConnected)
+					return true;
+			}
+			if (mEM.getEthState() != EthernetManager.ETH_STATE_DISABLED ) {
+				// maybe this is the first time we run, so set it to enabled
+				mEM.setEthEnabled(true);
+				if (!mEM.ethConfigured()) {
+					mEM.ethSetDefaultConf();
+				}
+				return resetInterface();
+			}
 		} catch (UnknownHostException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
@@ -210,16 +224,22 @@ public class EthernetStateTracker extends NetworkStateTracker {
 		Log.i(TAG,"start to monitor the ethernet devices");
 		if (mServiceStarted )	{
 			mEM = (EthernetManager)mContext.getSystemService(Context.ETH_SERVICE);
-			if (mEM.getEthState()==mEM.ETH_STATE_ENABLED) {
-				try {
-					resetInterface();
-				} catch (UnknownHostException e) {
-					Log.e(TAG, "Wrong ethernet configuration");
+			int state = mEM.getEthState();
+			if (state !=mEM.ETH_STATE_DISABLED) {
+				if (state == mEM.ETH_STATE_UNKNOWN){
+					// maybe this is the first time we run, so set it to enabled
+					mEM.setEthEnabled(true);
+				} else {
+					try {
+						resetInterface();
+					} catch (UnknownHostException e) {
+						Log.e(TAG, "Wrong ethernet configuration");
+					}
 				}
 			}
 		}
-
 	}
+
 
 	@Override
 	public int startUsingNetworkFeature(String feature, int callingPid,

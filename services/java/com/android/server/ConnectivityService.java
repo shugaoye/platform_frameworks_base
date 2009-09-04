@@ -151,12 +151,17 @@ public class ConnectivityService extends IConnectivityManager.Stub {
 
         mTestMode = SystemProperties.get("cm.test.mode").equals("true")
                 && SystemProperties.get("ro.build.type").equals("eng");
-
+        if (DBG) Log.v(TAG, "set Ethernet Service as prefer service");
+        setNetworkPreference(ConnectivityManager.TYPE_ETH);
         for (NetworkStateTracker t : mNetTrackers)
             t.startMonitoring();
 
         // Constructing this starts it too
         mWifiWatchdogService = new WifiWatchdogService(context, mWifiStateTracker);
+
+        //if (DBG) Log.v(TAG, "Starting Ethernet connection by default");
+        //if (mEthernetStateTracker.isAvailable())
+        //	mEthernetStateTracker.reconnect();
     }
 
     /**
@@ -204,47 +209,49 @@ public class ConnectivityService extends IConnectivityManager.Stub {
      * (see {@link #handleDisconnect(NetworkInfo)}).
      */
     private void enforcePreference() {
-        if (mActiveNetwork == null)
+        if (mActiveNetwork == null) {
+            Log.i(TAG, "no active networks");
             return;
+        }
 
         for (NetworkStateTracker t : mNetTrackers) {
             if (t == mActiveNetwork) {
                 int netType = t.getNetworkInfo().getType();
 
                 if (t.getNetworkInfo().getType() != mNetworkPreference) {
-			NetworkStateTracker otherTracker;
-			switch (netType) {
-			case ConnectivityManager.TYPE_WIFI:
-				otherTracker = mNetTrackers[ConnectivityManager.TYPE_MOBILE];
-                        if (otherTracker.isAvailable()) {
-                            teardown(t);
-                        }
-                        otherTracker = mNetTrackers[ConnectivityManager.TYPE_ETH];
-                        if (otherTracker.isAvailable()) {
-                            teardown(t);
-                        }
-				break;
-			case ConnectivityManager.TYPE_MOBILE:
-				otherTracker = mNetTrackers[ConnectivityManager.TYPE_WIFI];
-                        if (otherTracker.isAvailable()) {
-                            teardown(t);
-                        }
-                        otherTracker = mNetTrackers[ConnectivityManager.TYPE_ETH];
-                        if (otherTracker.isAvailable()) {
-                            teardown(t);
-                        }
-				break;
-			case ConnectivityManager.TYPE_ETH:
-				otherTracker = mNetTrackers[ConnectivityManager.TYPE_MOBILE];
-                        if (otherTracker.isAvailable()) {
-                            teardown(t);
-                        }
-                        otherTracker = mNetTrackers[ConnectivityManager.TYPE_WIFI];
-                        if (otherTracker.isAvailable()) {
-                            teardown(t);
-                        }
-				break;
-			}
+					NetworkStateTracker otherTracker;
+					switch (netType) {
+					case ConnectivityManager.TYPE_WIFI:
+						otherTracker = mNetTrackers[ConnectivityManager.TYPE_MOBILE];
+		                if (otherTracker.isAvailable()) {
+		                    teardown(t);
+		                }
+		                otherTracker = mNetTrackers[ConnectivityManager.TYPE_ETH];
+		                if (otherTracker.isAvailable()) {
+		                    teardown(t);
+		                }
+						break;
+					case ConnectivityManager.TYPE_MOBILE:
+						otherTracker = mNetTrackers[ConnectivityManager.TYPE_WIFI];
+		                if (otherTracker.isAvailable()) {
+		                     teardown(t);
+		                }
+		                otherTracker = mNetTrackers[ConnectivityManager.TYPE_ETH];
+		                if (otherTracker.isAvailable()) {
+		                     teardown(t);
+		                }
+						break;
+					case ConnectivityManager.TYPE_ETH:
+						otherTracker = mNetTrackers[ConnectivityManager.TYPE_MOBILE];
+		                if (otherTracker.isAvailable()) {
+		                    teardown(t);
+		                }
+		                otherTracker = mNetTrackers[ConnectivityManager.TYPE_WIFI];
+		                if (otherTracker.isAvailable()) {
+		                    teardown(t);
+		                }
+						break;
+					}
                 }
             }
         }
@@ -449,7 +456,7 @@ public class ConnectivityService extends IConnectivityManager.Stub {
 		newNet = mWifiStateTracker;
 		break;
         default:
-		newNet=mWifiStateTracker;
+		newNet=mEthernetStateTracker;
 
         }
 
@@ -569,12 +576,14 @@ public class ConnectivityService extends IConnectivityManager.Stub {
         // snapshot isFailover, because sendConnectedBroadcast() resets it
         boolean isFailover = info.isFailover();
         NetworkStateTracker thisNet = mNetTrackers[info.getType()];
-        NetworkStateTracker deadnet = null;
+        NetworkStateTracker[] deadnet=null;
         NetworkStateTracker otherNet;
         if (info.getType() == ConnectivityManager.TYPE_MOBILE) {
             otherNet = mWifiStateTracker;
-        } else /* info().getType() == TYPE_WIFI */ {
-            otherNet = mMobileDataStateTracker;
+        } else if(info.getType() == ConnectivityManager.TYPE_WIFI ) {
+            otherNet = mEthernetStateTracker;
+        } else {
+            otherNet = mWifiStateTracker;
         }
         /*
          * Check policy to see whether we are connected to a non-preferred
@@ -582,21 +591,36 @@ public class ConnectivityService extends IConnectivityManager.Stub {
          */
         NetworkInfo wifiInfo = mWifiStateTracker.getNetworkInfo();
         NetworkInfo mobileInfo = mMobileDataStateTracker.getNetworkInfo();
-        if (wifiInfo.isConnected() && mobileInfo.isConnected()) {
-            if (mNetworkPreference == ConnectivityManager.TYPE_WIFI)
-                deadnet = mMobileDataStateTracker;
-            else
-                deadnet = mWifiStateTracker;
+        NetworkInfo ethInfo = mEthernetStateTracker.getNetworkInfo();
+        int connected = 0 , i;
+        if (wifiInfo.isConnected()) connected++;
+        if (mobileInfo.isConnected()) connected++;
+        if (ethInfo.isConnected()) connected++;
+        if (connected >=2 ) {
+            deadnet = new NetworkStateTracker[2];
+			switch (mNetworkPreference) {
+				case ConnectivityManager.TYPE_WIFI:
+					deadnet[0] = mMobileDataStateTracker;
+					deadnet[1] = mEthernetStateTracker;
+				case ConnectivityManager.TYPE_MOBILE:
+					deadnet[0] = mWifiStateTracker;
+					deadnet[1] = mEthernetStateTracker;
+				case ConnectivityManager.TYPE_ETH:
+					deadnet[0] = mWifiStateTracker;
+					deadnet[1] = mMobileDataStateTracker;
+            }
         }
 
         boolean toredown = false;
         thisNet.setTeardownRequested(false);
         if (!mTestMode && deadnet != null) {
-            if (DBG) Log.v(TAG, "Policy requires " +
-                  deadnet.getNetworkInfo().getTypeName() + " teardown");
-            toredown = teardown(deadnet);
-            if (DBG && !toredown) {
-                Log.d(TAG, "Network declined teardown request");
+            for (i = 0 ; i < 2; i ++) {
+		if (DBG) Log.v(TAG, "Policy requires " +
+		   deadnet[i].getNetworkInfo().getTypeName() + " teardown");
+		toredown = teardown(deadnet[i]);
+		if (DBG && !toredown) {
+			 Log.d(TAG, "Network declined teardown request");
+				}
             }
         }
 
@@ -604,7 +628,8 @@ public class ConnectivityService extends IConnectivityManager.Stub {
          * Note that if toredown is true, deadnet cannot be null, so there is
          * no danger of a null pointer exception here..
          */
-        if (!toredown || deadnet.getNetworkInfo().getType() != info.getType()) {
+        if (!toredown || (deadnet[0].getNetworkInfo().getType() != info.getType() &&
+                          deadnet[1].getNetworkInfo().getType() != info.getType())) {
             mActiveNetwork = thisNet;
             if (DBG) Log.v(TAG, "Sending CONNECT bcast for " + info.getTypeName());
             thisNet.updateNetworkSettings();

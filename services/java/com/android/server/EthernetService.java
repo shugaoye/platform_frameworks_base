@@ -19,17 +19,18 @@ public class EthernetService<syncronized> extends IEthernetManager.Stub{
 	private EthernetStateTracker mTracker;
 	private String[] DevName;
 	private static final String TAG = "EthernetService";
-	private boolean isEthEnabled ;
-	private int mEthState= EthernetManager.ETH_STATE_DISABLED;
+	private int isEthEnabled ;
+	private int mEthState= EthernetManager.ETH_STATE_UNKNOWN;
 
 
 	public EthernetService(Context context, EthernetStateTracker Tracker){
 		mTracker = Tracker;
 		mContext = context;
 
-		isEthEnabled = getPersistedEthEnabled();
+		isEthEnabled = getPersistedState();
 		Log.i(TAG,"Ethernet dev enabled " + isEthEnabled );
-		setEthState(isEthEnabled ? EthernetManager.ETH_STATE_ENABLED:EthernetManager.ETH_STATE_DISABLED);
+		getDeviceNameList();
+		setEthState(isEthEnabled);
 		Log.i(TAG, "Trigger the ethernet monitor");
 		mTracker.StartPolling();
 	}
@@ -37,11 +38,11 @@ public class EthernetService<syncronized> extends IEthernetManager.Stub{
 	public boolean isEthConfigured() {
 
 		final ContentResolver cr = mContext.getContentResolver();
-	    int x = Settings.Secure.getInt(cr, Settings.Secure.ETH_CONF,0);
+		int x = Settings.Secure.getInt(cr, Settings.Secure.ETH_CONF,0);
 
-	    if (x == 1)
-		return true;
-	    return false;
+		if (x == 1)
+			return true;
+		return false;
 	}
 
 	public synchronized EthernetDevInfo getSavedEthConfig() {
@@ -61,6 +62,15 @@ public class EthernetService<syncronized> extends IEthernetManager.Stub{
 		return null;
 	}
 
+
+	public synchronized void setEthMode(String mode) {
+		final ContentResolver cr = mContext.getContentResolver();
+		if (DevName != null) {
+			Settings.Secure.putString(cr, Settings.Secure.ETH_IFNAME, DevName[0]);
+			Settings.Secure.putInt(cr, Settings.Secure.ETH_CONF,1);
+			Settings.Secure.putString(cr, Settings.Secure.ETH_MODE, mode);
+		}
+	}
 
 	public synchronized void UpdateEthDevInfo(EthernetDevInfo info) {
 		final ContentResolver cr = mContext.getContentResolver();
@@ -113,19 +123,19 @@ public class EthernetService<syncronized> extends IEthernetManager.Stub{
 			return null;
 	}
 
-	private boolean getPersistedEthEnabled() {
+	private int getPersistedState() {
 		final ContentResolver cr = mContext.getContentResolver();
-	    try {
-	        return Settings.Secure.getInt(cr, Settings.Secure.ETH_ON) == 1;
-	    } catch (Settings.SettingNotFoundException e) {
-	        Settings.Secure.putInt(cr, Settings.Secure.ETH_ON, 0);
-	        return false;
-	    }
-    }
+		try {
+			return Settings.Secure.getInt(cr, Settings.Secure.ETH_ON);
+		} catch (Settings.SettingNotFoundException e) {
+			return EthernetManager.ETH_STATE_UNKNOWN;
+		}
+	}
 
 	private synchronized void persistEthEnabled(boolean enabled) {
 	    final ContentResolver cr = mContext.getContentResolver();
-	    Settings.Secure.putInt(cr, Settings.Secure.ETH_ON, enabled ? 1 : 0);
+	    Settings.Secure.putInt(cr, Settings.Secure.ETH_ON,
+		enabled ? EthernetManager.ETH_STATE_ENABLED : EthernetManager.ETH_STATE_DISABLED);
 	}
 
 	public synchronized void setEthState(int state) {
@@ -138,6 +148,11 @@ public class EthernetService<syncronized> extends IEthernetManager.Stub{
 				mTracker.stopInteface();
 			} else {
 				persistEthEnabled(true);
+				if (!isEthConfigured()) {
+					// If user did not configure any interfaces yet, pick the first one
+					// and enable it.
+					setEthMode(EthernetDevInfo.ETH_CONN_MODE_DHCP);
+				}
 				try {
 					mTracker.resetInterface();
 				} catch (UnknownHostException e) {
@@ -151,4 +166,5 @@ public class EthernetService<syncronized> extends IEthernetManager.Stub{
 	public int getEthState( ) {
 		return mEthState;
 	}
+
 }

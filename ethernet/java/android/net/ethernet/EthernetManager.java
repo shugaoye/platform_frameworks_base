@@ -19,11 +19,9 @@ public class EthernetManager {
 	public static final String EXTRA_ETH_STATE = "eth_state";
 	public static final String EXTRA_PREVIOUS_ETH_STATE = "previous_eth_state";
 
-	public static final int ETH_STATE_DISABLING = 0;
 	public static final int ETH_STATE_DISABLED = 1;
-	public static final int ETH_STATE_ENABLING = 2;
-	public static final int ETH_STATE_ENABLED = 3;
-    public static final int ETH_STATE_UNKNOWN = 4;
+	public static final int ETH_STATE_ENABLED = 2;
+        public static final int ETH_STATE_UNKNOWN = 0;
 
 	IEthernetManager mService;
 	Handler mHandler;
@@ -33,7 +31,7 @@ public class EthernetManager {
 			return mService.isEthConfigured();
 		} catch (RemoteException e) {
 			Log.i(TAG, "Can not check eth config state");
-       }
+		}
 		return false;
 	}
 
@@ -85,14 +83,27 @@ public class EthernetManager {
 	}
 
 	public boolean ethConfigured() {
-		return true;
+		try {
+			 return mService.isEthConfigured();
+		} catch (RemoteException e) {
+          return false;
+		}
+
 	}
 
 	public int getTotalInterface() {
 		try {
 			 return mService.getTotalInterface();
 		} catch (RemoteException e) {
-          return 0;
+			return 0;
 		}
 	}
+
+	public void ethSetDefaultConf() {
+		try {
+			mService.setEthMode(EthernetDevInfo.ETH_CONN_MODE_DHCP);
+		} catch (RemoteException e) {
+		}
+	}
+
 }

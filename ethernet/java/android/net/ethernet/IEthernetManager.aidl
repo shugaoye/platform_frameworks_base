@@ -10,4 +10,5 @@ interface IEthernetManager
 	boolean isEthConfigured();
 	EthernetDevInfo getSavedEthConfig();
 	int getTotalInterface();
+	void setEthMode(String mode);
 }
