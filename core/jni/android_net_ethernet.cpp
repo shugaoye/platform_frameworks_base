@@ -83,7 +83,6 @@ namespace android {
     static jstring android_net_ethernet_waitForEvent(JNIEnv *env,
                                                      jobject clazz)
     {
-        struct pollfd pfd;
         char *buff;
         struct nlmsghdr *nh;
         struct ifinfomsg *einfo;
@@ -93,7 +92,7 @@ namespace android {
         char rbuf[4096];
         unsigned int left;
         interface_info_t *info;
-
+        int len;
         LOGI("Poll events from ethernet devices");
         /*
          *wait on uevent netlink socket for the ethernet device
@@ -106,26 +105,16 @@ namespace android {
 
         iov.iov_base = buff;
         iov.iov_len = NL_POLL_MSG_SZ;
-        pfd.events = POLLIN;
-        pfd.fd = nl_socket_poll;
-        if (poll(&pfd,1, -1) != -1) {
-            int len;
-            msg.msg_name = (void *)&addr_msg;
-            msg.msg_namelen =  sizeof(addr_msg);
-            msg.msg_iov =  &iov;
-            msg.msg_iovlen =  1;
-            msg.msg_control =  NULL;
-            msg.msg_controllen =  0;
-            msg.msg_flags =  0;
-            len = recvmsg(pfd.fd, &msg, 0);
-            if (len <= 0 ) {
-                LOGE("Can not receive data from netlink socket");
-                goto error;
-            }
-            if (len == -1) {
-                LOGE("Can not read from netlink socket for if state");
-                goto error;
-            }
+        msg.msg_name = (void *)&addr_msg;
+        msg.msg_namelen =  sizeof(addr_msg);
+        msg.msg_iov =  &iov;
+        msg.msg_iovlen =  1;
+        msg.msg_control =  NULL;
+        msg.msg_controllen =  0;
+        msg.msg_flags =  0;
+
+        if((len = recvmsg(nl_socket_poll, &msg, 0))>= 0) {
+            LOGI("recvmsg get data");
             result = rbuf;
             left = 4096;
             rbuf[0] = '\0';
@@ -146,23 +135,32 @@ namespace android {
                 }
 
                 LOGI(" event :%d  found",nh->nlmsg_type);
+                einfo = (struct ifinfomsg *)NLMSG_DATA(nh);
+                LOGI("the device flag :%X",einfo->ifi_flags);
                 if (nh->nlmsg_type == RTM_DELLINK ||
                     nh->nlmsg_type == RTM_NEWLINK ||
                     nh->nlmsg_type == RTM_DELADDR ||
                     nh->nlmsg_type == RTM_NEWADDR) {
-                  if ( (info = find_info_by_index
-                        (((struct ifinfomsg*)
-                          NLMSG_DATA(nh))->ifi_index))!=NULL)
-                    snprintf(result,left, "%s:%d:",info->name,
-                             nh->nlmsg_type);
+                    int type = nh->nlmsg_type;
+                    if (type == RTM_NEWLINK &&
+                        (!(einfo->ifi_flags & IFF_LOWER_UP))) {
+                        type = RTM_DELLINK;
+                    }
+                    if ( (info = find_info_by_index
+                          (((struct ifinfomsg*)
+                            NLMSG_DATA(nh))->ifi_index))!=NULL)
+                        snprintf(result,left, "%s:%d:",info->name,type);
                     left = left - strlen(result);
                     result =(char *)(result+ strlen(result));
                 }
 
             }
+            LOGI("Done parsing");
+            rbuf[4096 - left] = '\0';
+            LOGI("poll state :%s, left:%d",rbuf, left);
         }
-        rbuf[4096 - left] = '\0';
-        LOGI("poll state :%s, left:%d",rbuf, left);
+
+
     error:
         if(buff)
             free(buff);

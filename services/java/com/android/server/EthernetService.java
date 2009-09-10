@@ -145,7 +145,7 @@ public class EthernetService<syncronized> extends IEthernetManager.Stub{
 			mEthState = state;
 			if (state == EthernetManager.ETH_STATE_DISABLED) {
 				persistEthEnabled(false);
-				mTracker.stopInteface();
+				mTracker.stopInterface(false);
 			} else {
 				persistEthEnabled(true);
 				if (!isEthConfigured()) {
