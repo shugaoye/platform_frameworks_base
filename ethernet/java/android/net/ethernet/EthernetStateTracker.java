@@ -3,8 +3,13 @@ package android.net.ethernet;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 
+import android.R;
+import android.app.Notification;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.bluetooth.BluetoothHeadset;
 import android.content.Context;
+import android.content.Intent;
 import android.net.ConnectivityManager;
 import android.net.DhcpInfo;
 import android.net.NetworkStateTracker;
@@ -15,6 +20,7 @@ import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.Message;
 import android.os.Parcel;
+import android.os.SystemProperties;
 import android.util.*;
 
 public class EthernetStateTracker extends NetworkStateTracker {
@@ -25,6 +31,7 @@ public class EthernetStateTracker extends NetworkStateTracker {
 	private static final int EVENT_HW_CONNECTED			= 3;
 	private static final int EVENT_HW_DISCONNECTED			= 4;
 	private static final int EVENT_HW_PHYCONNECTED			= 5;
+	private static final int NOTIFY_ID				= 6;
 
 	private EthernetManager mEM;
 	private boolean mServiceStarted;
@@ -38,7 +45,8 @@ public class EthernetStateTracker extends NetworkStateTracker {
 	private EthernetMonitor mMonitor;
 	private String[] sDnsPropNames;
 	private boolean mStartingDhcp;
-
+	private NotificationManager mNotificationManager;
+	private Notification mNotification;
 
 	public EthernetStateTracker(Context context, Handler target) {
 
@@ -111,8 +119,8 @@ public class EthernetStateTracker extends NetworkStateTracker {
 		mInterfaceStopped = false;
 		mStartingDhcp = true;
 		sDnsPropNames = new String[] {
-								 "dhcp." + mInterfaceName + ".dns1",
-								 "dhcp." + mInterfaceName + ".dns2"};
+						"dhcp." + mInterfaceName + ".dns1",
+						"dhcp." + mInterfaceName + ".dns2"};
 		if (info.getConnectMode().equals(EthernetDevInfo.ETH_CONN_MODE_DHCP)) {
 			Log.i(TAG, "trigger dhcp for device " + info.getIfName());
 
@@ -138,8 +146,6 @@ public class EthernetStateTracker extends NetworkStateTracker {
 
 			}
 			this.sendEmptyMessage(event);
-
-
 		}
 		return true;
 	}
@@ -267,7 +273,50 @@ public class EthernetStateTracker extends NetworkStateTracker {
 
 	}
 
+	private void postNotification(int event) {
+		String ns = Context.NOTIFICATION_SERVICE;
+		mNotificationManager = (NotificationManager)mContext.getSystemService(ns);
+		if (mNotificationManager != null) {
+			int icon;
+			CharSequence title = "Ethernet Status";
+			CharSequence detail;
+			if(mNotification == null) {
+				mNotification = new Notification();
+				mNotification.flags = Notification.FLAG_AUTO_CANCEL;
+				mNotification.contentIntent = PendingIntent.getActivity(mContext, 0,
+						new Intent(EthernetManager.NETWORK_STATE_CHANGED_ACTION), 0);
+			}
+			mNotification.when = System.currentTimeMillis();
+
+			switch (event) {
+			case EVENT_HW_CONNECTED:
+			case EVENT_INTERFACE_CONFIGURATION_SUCCEEDED:
+				mNotification.icon=icon = com.android.internal.R.drawable.connect_established;
+				String ipprop="dhcp."+mInterfaceName+".ipaddress";
+				String ipaddr = SystemProperties.get(ipprop);
+				detail = "Ethernet is connected. IP address: " + ipaddr ;
+
+				break;
+			case EVENT_HW_DISCONNECTED:
+			case EVENT_INTERFACE_CONFIGURATION_FAILED:
+				mNotification.icon = icon = com.android.internal.R.drawable.connect_no;
+				detail = "Ethernet is disconnected.";
+				break;
+			default:
+				mNotification.icon=icon = com.android.internal.R.drawable.connect_creating;
+				detail = "Unknown event with Ethernet.";
+			}
+			Log.i(TAG, "post event to notification manager "+detail);
+			mNotification.setLatestEventInfo(mContext, title, detail,mNotification.contentIntent );
+			Message message = mTarget.obtainMessage(EVENT_NOTIFICATION_CHANGED, 1,icon,mNotification);
+			mTarget.sendMessageDelayed(message, 0);
+		} else {
+			Log.i(TAG, "notification manager is not up yet");
+		}
+
+	}
 	public void handleMessage(Message msg) {
+
 		synchronized (this) {
 			switch (msg.what) {
 			case EVENT_INTERFACE_CONFIGURATION_SUCCEEDED:
@@ -276,6 +325,7 @@ public class EthernetStateTracker extends NetworkStateTracker {
 				if (mHWConnected) {
 					setDetailedState(DetailedState.CONNECTED);
 					mTarget.sendEmptyMessage(EVENT_CONFIGURATION_CHANGED);
+					postNotification(msg.what);
 				}
 
 			break;
@@ -290,13 +340,16 @@ public class EthernetStateTracker extends NetworkStateTracker {
 				if (mStackConnected) {
 					setDetailedState(DetailedState.CONNECTED);
 					mTarget.sendEmptyMessage(EVENT_CONFIGURATION_CHANGED);
+					postNotification(msg.what);
 				}
+
 			break;
 			case EVENT_HW_DISCONNECTED:
 				Log.i(TAG, "received disconnected events, stack: " + mStackConnected + " HW " + mHWConnected );
 				mHWConnected = false;
 				setDetailedState(DetailedState.DISCONNECTED);
 				stopInterface(true);
+				postNotification(msg.what);
 			break;
 			case EVENT_HW_PHYCONNECTED:
 				Log.i(TAG, "interface up event, kick off connection request");

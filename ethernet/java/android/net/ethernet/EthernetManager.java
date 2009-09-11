@@ -2,6 +2,8 @@ package android.net.ethernet;
 
 import java.util.List;
 
+import android.annotation.SdkConstant;
+import android.annotation.SdkConstant.SdkConstantType;
 import android.net.wifi.IWifiManager;
 import android.os.Handler;
 import android.os.RemoteException;
@@ -14,6 +16,9 @@ public class EthernetManager {
 	        "android.net.ethernet.ETH_STATE_CHANGED";
 	public static final String NETWORK_STATE_CHANGED_ACTION =
 			"android.net.ethernet.STATE_CHANGE";
+
+   // public static final String ACTION_ETH_NETWORK = "android.net.ethernet.ETH_NET_CHG";
+
 
 	public static final String EXTRA_NETWORK_INFO = "networkInfo";
 	public static final String EXTRA_ETH_STATE = "eth_state";
