@@ -199,8 +199,8 @@ void LayerBlur::onDraw(const Region& clip) const
             glScalef(1.0f/w, -1.0f/h, 1);
             glTranslatef(-x, -y, 0);
             glEnableClientState(GL_TEXTURE_COORD_ARRAY);
-            glVertexPointer(2, GL_FLOAT, 0, mVerticesf);
-            glTexCoordPointer(2, GL_FLOAT, 0, mVerticesf);
+            glVertexPointer(2, GL_FIXED, 0, mVertices);
+            glTexCoordPointer(2, GL_FIXED, 0, mVertices);
             Rect r;
             while (iterator.iterate(&r)) {
                 const GLint sy = fbHeight - (r.top + r.height());

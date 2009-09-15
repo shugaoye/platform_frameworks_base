@@ -268,15 +268,6 @@ protected:
                 // atomic
     volatile    int32_t         mInvalidate;
                 
-                GLfloat         mVerticesf[4][2];
-                void verticesToFloat()
-                {
-                    int i, j;
-                    for (i = 0; i < 4; i++) {
-                        for (j = 0; j < 2; j++)
-                            mVerticesf[i][j] = mVertices[i][j] / 65536.0f;
-                    }
-                }
 
 private:
                 void validateTexture(GLint textureName) const;
