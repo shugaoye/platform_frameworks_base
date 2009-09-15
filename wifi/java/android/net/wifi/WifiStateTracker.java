@@ -161,8 +161,8 @@ public class WifiStateTracker extends NetworkStateTracker {
     private WifiInfo mWifiInfo;
     private List<ScanResult> mScanResults;
     private WifiManager mWM;
-    private boolean mHaveIPAddress;
-    private boolean mObtainingIPAddress;
+    private boolean mHaveIpAddress;
+    private boolean mObtainingIpAddress;
     private boolean mTornDownByConnMgr;
     /**
      * A DISCONNECT event has been received, but processing it
@@ -239,6 +239,7 @@ public class WifiStateTracker extends NetworkStateTracker {
     
     private boolean mIsScanModeActive;
     private boolean mIsScanModeSetDueToAHiddenNetwork;
+    private boolean mEnableRssiPolling;
 
     // Wi-Fi run states:
     private static final int RUN_STATE_STARTING = 1;
@@ -303,8 +304,8 @@ public class WifiStateTracker extends NetworkStateTracker {
         
         mWifiInfo = new WifiInfo();
         mWifiMonitor = new WifiMonitor(this);
-        mHaveIPAddress = false;
-        mObtainingIPAddress = false;
+        mHaveIpAddress = false;
+        mObtainingIpAddress = false;
         setTornDownByConnMgr(false);
         mDisconnectPending = false;
         mScanResults = new ArrayList<ScanResult>();
@@ -338,6 +339,7 @@ public class WifiStateTracker extends NetworkStateTracker {
     private void setSupplicantState(SupplicantState state) {
         mWifiInfo.setSupplicantState(state);
         updateNetworkInfo();
+        checkPollTimer();
     }
 
     public SupplicantState getSupplicantState() {
@@ -352,6 +354,7 @@ public class WifiStateTracker extends NetworkStateTracker {
     private void setSupplicantState(String stateName) {
         mWifiInfo.setSupplicantState(stateName);
         updateNetworkInfo();
+        checkPollTimer();
     }
 
     /**
@@ -444,6 +447,14 @@ public class WifiStateTracker extends NetworkStateTracker {
     }
 
     /**
+     * Report whether the Wi-Fi connection has successfully acquired an IP address.
+     * @return {@code true} if the Wi-Fi connection has been assigned an IP address.
+     */
+    public boolean hasIpAddress() {
+        return mHaveIpAddress;
+    }
+
+    /**
      * Send the tracker a notification that a user-entered password key
      * may be incorrect (i.e., caused authentication to fail).
      */
@@ -532,8 +543,10 @@ public class WifiStateTracker extends NetworkStateTracker {
      * Set the interval timer for polling connection information
      * that is not delivered asynchronously.
      */
-    private synchronized void setPollTimer () {
-        if (!hasMessages(EVENT_POLL_INTERVAL)) {
+    private synchronized void checkPollTimer() {
+        if (mEnableRssiPolling &&
+                mWifiInfo.getSupplicantState() == SupplicantState.COMPLETED &&
+                !hasMessages(EVENT_POLL_INTERVAL)) {
             sendEmptyMessageDelayed(EVENT_POLL_INTERVAL, POLL_STATUS_INTERVAL_MSECS);
         }
     }
@@ -627,6 +640,13 @@ public class WifiStateTracker extends NetworkStateTracker {
             }
         }
         setBluetoothScanMode(isBluetoothPlaying);
+    }
+
+    public void enableRssiPolling(boolean enable) {
+        if (mEnableRssiPolling != enable) {
+            mEnableRssiPolling = enable;
+            checkPollTimer();
+        }
     }
 
     @Override
@@ -724,7 +744,7 @@ public class WifiStateTracker extends NetworkStateTracker {
                     intent.putExtra(WifiManager.EXTRA_SUPPLICANT_CONNECTED, true);
                     mContext.sendBroadcast(intent);
                 }
-                if (supplState == SupplicantState.COMPLETED && mHaveIPAddress) {
+                if (supplState == SupplicantState.COMPLETED && mHaveIpAddress) {
                     setDetailedState(DetailedState.CONNECTED);
                 } else {
                     setDetailedState(WifiInfo.getDetailedStateOf(supplState));
@@ -732,14 +752,20 @@ public class WifiStateTracker extends NetworkStateTracker {
                 /*
                  * Filter out multicast packets. This saves battery power, since
                  * the CPU doesn't have to spend time processing packets that
-                 * are going to end up being thrown away. Obviously, if we
-                 * ever want to support multicast, this will have to change.
+                 * are going to end up being thrown away.
+                 *
+                 * Note that rather than turn this off directly, we use the
+                 * public api - this keeps us all in sync - turn multicast on
+                 * first and then off.. if nobody else wants it on it'll be
+                 * off then and it's all synchronized within the API.
                  */
+                WifiManager.MulticastLock l = 
+                        mWM.createMulticastLock("WifiStateTracker");
+                l.acquire();
+                l.release();
+
                 if (mBluetoothA2dp == null) {
                     mBluetoothA2dp = new BluetoothA2dp(mContext);
-                }
-                synchronized (this) {
-                    WifiNative.startPacketFiltering();
                 }
                 checkIsBluetoothPlaying();
                 break;
@@ -779,8 +805,8 @@ public class WifiStateTracker extends NetworkStateTracker {
                 }
                 setDetailedState(DetailedState.DISCONNECTED);
                 setSupplicantState(SupplicantState.UNINITIALIZED);
-                mHaveIPAddress = false;
-                mObtainingIPAddress = false;
+                mHaveIpAddress = false;
+                mObtainingIpAddress = false;
                 if (died) {
                     mWM.setWifiEnabled(false);
                 }
@@ -950,7 +976,7 @@ public class WifiStateTracker extends NetworkStateTracker {
                 }
                 requestConnectionStatus(mWifiInfo);
                 if (!(result.state == DetailedState.CONNECTED &&
-                        (!mHaveIPAddress || mDisconnectPending))) {
+                        (!mHaveIpAddress || mDisconnectPending))) {
                     setDetailedState(result.state);
                 }
 
@@ -979,7 +1005,7 @@ public class WifiStateTracker extends NetworkStateTracker {
                     mLastBssid = result.BSSID;
                     mLastSsid = mWifiInfo.getSSID();
                     mLastNetworkId = result.networkId;
-                    if (mHaveIPAddress) {
+                    if (mHaveIpAddress) {
                         setDetailedState(DetailedState.CONNECTED);
                     } else {
                         setDetailedState(DetailedState.OBTAINING_IPADDR);
@@ -1008,9 +1034,7 @@ public class WifiStateTracker extends NetworkStateTracker {
             case EVENT_POLL_INTERVAL:
                 if (mWifiInfo.getSupplicantState() != SupplicantState.UNINITIALIZED) {
                     requestPolledInfo(mWifiInfo);
-                    if (mWifiInfo.getSupplicantState() == SupplicantState.COMPLETED) {
-                        setPollTimer();
-                    }
+                    checkPollTimer();
                 }
                 break;
             
@@ -1047,8 +1071,8 @@ public class WifiStateTracker extends NetworkStateTracker {
                     break;
                 }
                 mReconnectCount = 0;
-                mHaveIPAddress = true;
-                mObtainingIPAddress = false;
+                mHaveIpAddress = true;
+                mObtainingIpAddress = false;
                 mWifiInfo.setIpAddress(mDhcpInfo.ipAddress);
                 mLastSignalLevel = -1; // force update of signal strength
                 if (mNetworkInfo.getDetailedState() != DetailedState.CONNECTED) {
@@ -1074,9 +1098,9 @@ public class WifiStateTracker extends NetworkStateTracker {
                     // [ 0- 0] Interface configuration succeeded (1) or failed (0)
                     EventLog.writeEvent(EVENTLOG_INTERFACE_CONFIGURATION_STATE_CHANGED, 0);
                 
-                    mHaveIPAddress = false;
+                    mHaveIpAddress = false;
                     mWifiInfo.setIpAddress(0);
-                    mObtainingIPAddress = false;
+                    mObtainingIpAddress = false;
                     synchronized(this) {
                         WifiNative.disconnectCommand();
                     }
@@ -1107,7 +1131,7 @@ public class WifiStateTracker extends NetworkStateTracker {
                             } else {
                                 // In some situations, supplicant needs to be kickstarted to
                                 // start the background scanning
-                                WifiNative.scanCommand();
+                                WifiNative.scanCommand(true);
                             }
                         }
                     }
@@ -1149,21 +1173,21 @@ public class WifiStateTracker extends NetworkStateTracker {
     }
 
     private void configureInterface() {
-        setPollTimer();
+        checkPollTimer();
         mLastSignalLevel = -1;
         if (!mUseStaticIp) {
-            if (!mHaveIPAddress && !mObtainingIPAddress) {
-                mObtainingIPAddress = true;
+            if (!mHaveIpAddress && !mObtainingIpAddress) {
+                mObtainingIpAddress = true;
                 mDhcpTarget.sendEmptyMessage(EVENT_DHCP_START);
             }
         } else {
             int event;
             if (NetworkUtils.configureInterface(mInterfaceName, mDhcpInfo)) {
-                mHaveIPAddress = true;
+                mHaveIpAddress = true;
                 event = EVENT_INTERFACE_CONFIGURATION_SUCCEEDED;
                 if (LOCAL_LOGD) Log.v(TAG, "Static IP configuration succeeded");
             } else {
-                mHaveIPAddress = false;
+                mHaveIpAddress = false;
                 event = EVENT_INTERFACE_CONFIGURATION_FAILED;
                 if (LOCAL_LOGD) Log.v(TAG, "Static IP configuration failed");
             }
@@ -1196,8 +1220,8 @@ public class WifiStateTracker extends NetworkStateTracker {
      * using the interface, stopping DHCP, and disabling the interface.
      */
     public void resetInterface() {
-        mHaveIPAddress = false;
-        mObtainingIPAddress = false;
+        mHaveIpAddress = false;
+        mObtainingIpAddress = false;
         mWifiInfo.setIpAddress(0);
 
         /*
@@ -1608,8 +1632,8 @@ public class WifiStateTracker extends NetworkStateTracker {
         }
         sb.append(LS).append(mWifiInfo).append(LS);
         sb.append(mDhcpInfo).append(LS);
-        sb.append("haveIpAddress=").append(mHaveIPAddress).
-                append(", obtainingIpAddress=").append(mObtainingIPAddress).
+        sb.append("haveIpAddress=").append(mHaveIpAddress).
+                append(", obtainingIpAddress=").append(mObtainingIpAddress).
                 append(", scanModeActive=").append(mIsScanModeActive).append(LS).
                 append("lastSignalLevel=").append(mLastSignalLevel).
                 append(", explicitlyDisabled=").append(mTornDownByConnMgr);

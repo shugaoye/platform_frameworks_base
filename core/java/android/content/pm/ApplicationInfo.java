@@ -58,9 +58,20 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
      * Class implementing the Application's manage space
      * functionality.  From the "manageSpaceActivity"
      * attribute. This is an optional attribute and will be null if
-     * application's dont specify it in their manifest
+     * applications don't specify it in their manifest
      */
     public String manageSpaceActivityName;    
+    
+    /**
+     * Class implementing the Application's backup functionality.  From
+     * the "backupAgent" attribute.  This is an optional attribute and
+     * will be null if the application does not specify it in its manifest.
+     * 
+     * <p>If android:allowBackup is set to false, this attribute is ignored.
+     * 
+     * {@hide}
+     */
+    public String backupAgentName;
     
     /**
      * Value for {@link #flags}: if set, this application is installed in the
@@ -93,7 +104,7 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
     public static final int FLAG_PERSISTENT = 1<<3;
 
     /**
-     * Value for {@link #flags}: set to true iif this application holds the
+     * Value for {@link #flags}: set to true if this application holds the
      * {@link android.Manifest.permission#FACTORY_TEST} permission and the
      * device is running in factory test mode.
      */
@@ -113,19 +124,76 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
      */
     public static final int FLAG_ALLOW_CLEAR_USER_DATA = 1<<6;
     
-    
     /**
-     * Value for {@link #flags}: default value for the corresponding ActivityInfo flag.
-     *  {@hide}
+     * Value for {@link #flags}: this is set if this application has been
+     * install as an update to a built-in system application.
      */
     public static final int FLAG_UPDATED_SYSTEM_APP = 1<<7;
+    
+    /**
+     * Value for {@link #flags}: this is set of the application has specified
+     * {@link android.R.styleable#AndroidManifestApplication_testOnly
+     * android:testOnly} to be true.
+     */
+    public static final int FLAG_TEST_ONLY = 1<<8;
 
+    /**
+     * Value for {@link #flags}: true when the application's window can be
+     * reduced in size for smaller screens.  Corresponds to
+     * {@link android.R.styleable#AndroidManifestSupportsScreens_smallScreens
+     * android:smallScreens}.
+     */
+    public static final int FLAG_SUPPORTS_SMALL_SCREENS = 1<<9;
+    
+    /**
+     * Value for {@link #flags}: true when the application's window can be
+     * displayed on normal screens.  Corresponds to
+     * {@link android.R.styleable#AndroidManifestSupportsScreens_normalScreens
+     * android:normalScreens}.
+     */
+    public static final int FLAG_SUPPORTS_NORMAL_SCREENS = 1<<10; 
+    
+    /**
+     * Value for {@link #flags}: true when the application's window can be
+     * increased in size for larger screens.  Corresponds to
+     * {@link android.R.styleable#AndroidManifestSupportsScreens_largeScreens
+     * android:smallScreens}.
+     */
+    public static final int FLAG_SUPPORTS_LARGE_SCREENS = 1<<11;
+    
+    /**
+     * Value for {@link #flags}: true when the application knows how to adjust
+     * its UI for different screen sizes.  Corresponds to
+     * {@link android.R.styleable#AndroidManifestSupportsScreens_resizeable
+     * android:resizeable}.
+     */
+    public static final int FLAG_RESIZEABLE_FOR_SCREENS = 1<<12;
+    
+    /**
+     * Value for {@link #flags}: true when the application knows how to
+     * accomodate different screen densities.  Corresponds to
+     * {@link android.R.styleable#AndroidManifestSupportsScreens_anyDensity
+     * android:anyDensity}.
+     */
+    public static final int FLAG_SUPPORTS_SCREEN_DENSITIES = 1<<13;
+    
+    /**
+     * Value for {@link #flags}: this is false if the application has set
+     * its android:allowBackup to false, true otherwise.
+     * 
+     * {@hide}
+     */
+    public static final int FLAG_ALLOW_BACKUP = 1<<14;
+    
     /**
      * Flags associated with the application.  Any combination of
      * {@link #FLAG_SYSTEM}, {@link #FLAG_DEBUGGABLE}, {@link #FLAG_HAS_CODE},
      * {@link #FLAG_PERSISTENT}, {@link #FLAG_FACTORY_TEST}, and
      * {@link #FLAG_ALLOW_TASK_REPARENTING}
-     * {@link #FLAG_ALLOW_CLEAR_USER_DATA}.
+     * {@link #FLAG_ALLOW_CLEAR_USER_DATA}, {@link #FLAG_UPDATED_SYSTEM_APP},
+     * {@link #FLAG_TEST_ONLY}, {@link #FLAG_SUPPORTS_SMALL_SCREENS},
+     * {@link #FLAG_SUPPORTS_NORMAL_SCREENS},
+     * {@link #FLAG_SUPPORTS_LARGE_SCREENS}, {@link #FLAG_RESIZEABLE_FOR_SCREENS}.
      */
     public int flags = 0;
     
@@ -162,6 +230,16 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
     public int uid;
     
     /**
+     * The minimum SDK version this application targets.  It may run on earilier
+     * versions, but it knows how to work with any new behavior added at this
+     * version.  Will be {@link android.os.Build.VERSION_CODES#CUR_DEVELOPMENT}
+     * if this is a development build and the app is targeting that.  You should
+     * compare that this number is >= the SDK version number at which your
+     * behavior was introduced.
+     */
+    public int targetSdkVersion;
+    
+    /**
      * When false, indicates that all components within this application are
      * considered disabled, regardless of their individually set enabled status.
      */
@@ -180,9 +258,10 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         pw.println(prefix + "publicSourceDir=" + publicSourceDir);
         pw.println(prefix + "sharedLibraryFiles=" + sharedLibraryFiles);
         pw.println(prefix + "dataDir=" + dataDir);
+        pw.println(prefix + "targetSdkVersion=" + targetSdkVersion);
         pw.println(prefix + "enabled=" + enabled);
-        pw.println(prefix+"manageSpaceActivityName="+manageSpaceActivityName);
-        pw.println(prefix+"description=0x"+Integer.toHexString(descriptionRes));
+        pw.println(prefix + "manageSpaceActivityName="+manageSpaceActivityName);
+        pw.println(prefix + "description=0x"+Integer.toHexString(descriptionRes));
         super.dumpBack(pw, prefix);
     }
     
@@ -225,6 +304,7 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         sharedLibraryFiles = orig.sharedLibraryFiles;
         dataDir = orig.dataDir;
         uid = orig.uid;
+        targetSdkVersion = orig.targetSdkVersion;
         enabled = orig.enabled;
         manageSpaceActivityName = orig.manageSpaceActivityName;
         descriptionRes = orig.descriptionRes;
@@ -254,8 +334,10 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         dest.writeStringArray(sharedLibraryFiles);
         dest.writeString(dataDir);
         dest.writeInt(uid);
+        dest.writeInt(targetSdkVersion);
         dest.writeInt(enabled ? 1 : 0);
         dest.writeString(manageSpaceActivityName);
+        dest.writeString(backupAgentName);
         dest.writeInt(descriptionRes);
     }
 
@@ -282,11 +364,13 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
         sharedLibraryFiles = source.readStringArray();
         dataDir = source.readString();
         uid = source.readInt();
+        targetSdkVersion = source.readInt();
         enabled = source.readInt() != 0;
         manageSpaceActivityName = source.readString();
+        backupAgentName = source.readString();
         descriptionRes = source.readInt();
     }
-    
+
     /**
      * Retrieve the textual description of the application.  This
      * will call back on the given PackageManager to load the description from
@@ -306,5 +390,16 @@ public class ApplicationInfo extends PackageItemInfo implements Parcelable {
             }
         }
         return null;
+    }
+
+    /**
+     * Disable compatibility mode
+     * 
+     * @hide
+     */
+    public void disableCompatibilityMode() {
+        flags |= (FLAG_SUPPORTS_LARGE_SCREENS | FLAG_SUPPORTS_NORMAL_SCREENS |
+                FLAG_SUPPORTS_SMALL_SCREENS | FLAG_RESIZEABLE_FOR_SCREENS |
+                FLAG_SUPPORTS_SCREEN_DENSITIES);
     }
 }

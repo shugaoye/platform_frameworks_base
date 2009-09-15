@@ -61,8 +61,10 @@ public abstract class AbstractTableMerger
             _SYNC_ID +"=? and " + _SYNC_ACCOUNT + "=?";
     private static final String SELECT_BY_ID = BaseColumns._ID +"=?";
 
-    private static final String SELECT_UNSYNCED = ""
-            + _SYNC_DIRTY + " > 0 and (" + _SYNC_ACCOUNT + "=? or " + _SYNC_ACCOUNT + " is null)";
+    private static final String SELECT_UNSYNCED =
+            "(" + _SYNC_ACCOUNT + " IS NULL OR " + _SYNC_ACCOUNT + "=?) AND "
+            + "(" + _SYNC_ID + " IS NULL OR (" + _SYNC_DIRTY + " > 0 AND "
+                                              + _SYNC_VERSION + " IS NOT NULL))";
 
     public AbstractTableMerger(SQLiteDatabase database,
             String table, Uri tableURL, String deletedTable,
@@ -365,7 +367,10 @@ public abstract class AbstractTableMerger
 
             if (!TextUtils.isEmpty(localSyncID)) {
                 // An existing server item has changed
+                // If serverSyncVersion is null, there is no edit URL;
+                // server won't let this change be written.
                 boolean recordChanged = (localSyncVersion == null) ||
+                        (serverSyncVersion == null) ||
                         !serverSyncVersion.equals(localSyncVersion);
                 if (recordChanged) {
                     if (localSyncDirty) {
@@ -377,14 +382,20 @@ public abstract class AbstractTableMerger
                         conflict = true;
                     } else {
                         if (Log.isLoggable(TAG, Log.VERBOSE)) {
-                             Log.v(TAG,
-                                     "remote record " +
-                                             serverSyncId +
-                                     " updates local _sync_id " +
-                                     localSyncID + ", local _id " +
-                                     localRowId);
-                         }
-                         update = true;
+                            Log.v(TAG,
+                                    "remote record " +
+                                            serverSyncId +
+                                            " updates local _sync_id " +
+                                            localSyncID + ", local _id " +
+                                            localRowId);
+                        }
+                        update = true;
+                    }
+                } else {
+                    if (Log.isLoggable(TAG, Log.VERBOSE)) {
+                        Log.v(TAG,
+                                "Skipping update: localSyncVersion: " + localSyncVersion +
+                                ", serverSyncVersion: " + serverSyncVersion);
                     }
                 }
             } else {

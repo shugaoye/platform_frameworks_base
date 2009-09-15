@@ -601,7 +601,7 @@ public final class AssetManager {
     public native final void setConfiguration(int mcc, int mnc, String locale,
             int orientation, int touchscreen, int density, int keyboard,
             int keyboardHidden, int navigation, int screenWidth, int screenHeight,
-            int majorVersion);
+            int screenLayout, int majorVersion);
 
     /**
      * Retrieve the resource identifier for the given resource name.
@@ -637,12 +637,13 @@ public final class AssetManager {
      *  mRetData. */
     private native final int loadResourceBagValue(int ident, int bagEntryId, TypedValue outValue,
                                                boolean resolve);
-    /*package*/ static final int STYLE_NUM_ENTRIES = 5;
+    /*package*/ static final int STYLE_NUM_ENTRIES = 6;
     /*package*/ static final int STYLE_TYPE = 0;
     /*package*/ static final int STYLE_DATA = 1;
     /*package*/ static final int STYLE_ASSET_COOKIE = 2;
     /*package*/ static final int STYLE_RESOURCE_ID = 3;
     /*package*/ static final int STYLE_CHANGING_CONFIGURATIONS = 4;
+    /*package*/ static final int STYLE_DENSITY = 5;
     /*package*/ native static final boolean applyStyle(int theme,
             int defStyleAttr, int defStyleRes, int xmlParser,
             int[] inAttrs, int[] outValues, int[] outIndices);
@@ -662,6 +663,11 @@ public final class AssetManager {
      * {@hide}
      */
     public native static final int getGlobalAssetCount();
+    
+    /**
+     * {@hide}
+     */
+    public native static final String getAssetAllocations();
     
     /**
      * {@hide}

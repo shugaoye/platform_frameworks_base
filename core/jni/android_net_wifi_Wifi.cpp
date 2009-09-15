@@ -27,6 +27,8 @@
 
 namespace android {
 
+static jboolean sScanModeActive = false;
+
 /*
  * The following remembers the jfieldID's of the fields
  * of the DhcpInfo Java object, so that we don't have
@@ -254,27 +256,29 @@ static jboolean android_net_wifi_reassociateCommand(JNIEnv* env, jobject clazz)
     return doBooleanCommand("REASSOCIATE", "OK");
 }
 
-static jboolean android_net_wifi_scanCommand(JNIEnv* env, jobject clazz)
+static jboolean doSetScanMode(jboolean setActive)
+{
+    return doBooleanCommand((setActive ? "DRIVER SCAN-ACTIVE" : "DRIVER SCAN-PASSIVE"), "OK");
+}
+
+static jboolean android_net_wifi_scanCommand(JNIEnv* env, jobject clazz, jboolean forceActive)
 {
     jboolean result;
+
     // Ignore any error from setting the scan mode.
     // The scan will still work.
-    (void)doBooleanCommand("DRIVER SCAN-ACTIVE", "OK");
+    if (forceActive && !sScanModeActive)
+        doSetScanMode(true);
     result = doBooleanCommand("SCAN", "OK");
-    (void)doBooleanCommand("DRIVER SCAN-PASSIVE", "OK");
+    if (forceActive && !sScanModeActive)
+        doSetScanMode(sScanModeActive);
     return result;
 }
 
 static jboolean android_net_wifi_setScanModeCommand(JNIEnv* env, jobject clazz, jboolean setActive)
 {
-    jboolean result;
-    // Ignore any error from setting the scan mode.
-    // The scan will still work.
-    if (setActive) {
-        return doBooleanCommand("DRIVER SCAN-ACTIVE", "OK");
-    } else {
-        return doBooleanCommand("DRIVER SCAN-PASSIVE", "OK");
-    }
+    sScanModeActive = setActive;
+    return doSetScanMode(setActive);
 }
 
 static jboolean android_net_wifi_startDriverCommand(JNIEnv* env, jobject clazz)
@@ -291,6 +295,7 @@ static jboolean android_net_wifi_startPacketFiltering(JNIEnv* env, jobject clazz
 {
     return doBooleanCommand("DRIVER RXFILTER-ADD 0", "OK")
 	&& doBooleanCommand("DRIVER RXFILTER-ADD 1", "OK")
+	&& doBooleanCommand("DRIVER RXFILTER-ADD 3", "OK")
 	&& doBooleanCommand("DRIVER RXFILTER-START", "OK");
 }
 
@@ -298,6 +303,7 @@ static jboolean android_net_wifi_stopPacketFiltering(JNIEnv* env, jobject clazz)
 {
     jboolean result = doBooleanCommand("DRIVER RXFILTER-STOP", "OK");
     if (result) {
+	(void)doBooleanCommand("DRIVER RXFILTER-REMOVE 3", "OK");
 	(void)doBooleanCommand("DRIVER RXFILTER-REMOVE 1", "OK");
 	(void)doBooleanCommand("DRIVER RXFILTER-REMOVE 0", "OK");
     }
@@ -315,8 +321,13 @@ static jint android_net_wifi_getRssiCommand(JNIEnv* env, jobject clazz)
     }
     // reply comes back in the form "<SSID> rssi XX" where XX is the
     // number we're interested in.  if we're associating, it returns "OK".
+    // beware - <SSID> can contain spaces.
     if (strcmp(reply, "OK") != 0) {
-    	sscanf(reply, "%*s %*s %d", &rssi);
+        char* lastSpace = strrchr(reply, ' ');
+        // lastSpace should be preceded by "rssi" and followed by the value
+        if (lastSpace && !strncmp(lastSpace - 4, "rssi", 4)) {
+            sscanf(lastSpace + 1, "%d", &rssi);
+        }
     }
     return (jint)rssi;
 }
@@ -502,7 +513,7 @@ static JNINativeMethod gWifiMethods[] = {
     { "disconnectCommand", "()Z",  (void *)android_net_wifi_disconnectCommand },
     { "reconnectCommand", "()Z",  (void *)android_net_wifi_reconnectCommand },
     { "reassociateCommand", "()Z",  (void *)android_net_wifi_reassociateCommand },
-    { "scanCommand", "()Z", (void*) android_net_wifi_scanCommand },
+    { "scanCommand", "(Z)Z", (void*) android_net_wifi_scanCommand },
     { "setScanModeCommand", "(Z)Z", (void*) android_net_wifi_setScanModeCommand },
     { "startDriverCommand", "()Z", (void*) android_net_wifi_startDriverCommand },
     { "stopDriverCommand", "()Z", (void*) android_net_wifi_stopDriverCommand },

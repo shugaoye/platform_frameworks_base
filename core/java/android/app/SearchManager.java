@@ -17,13 +17,20 @@
 package android.app;
 
 import android.content.ComponentName;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.DialogInterface;
-import android.content.res.Configuration;
+import android.database.Cursor;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.RemoteException;
 import android.os.ServiceManager;
+import android.server.search.SearchableInfo;
+import android.util.Log;
 import android.view.KeyEvent;
+
+import java.util.List;
 
 /**
  * This class provides access to the system search services.
@@ -33,7 +40,7 @@ import android.view.KeyEvent;
  * methods and the the {@link android.content.Intent#ACTION_SEARCH ACTION_SEARCH}
  * {@link android.content.Intent Intent}.  This class does provide a basic
  * overview of search services and how to integrate them with your activities.
- * If you do require direct access to the Search Manager, do not instantiate 
+ * If you do require direct access to the SearchManager, do not instantiate 
  * this class directly; instead, retrieve it through
  * {@link android.content.Context#getSystemService
  * context.getSystemService(Context.SEARCH_SERVICE)}.
@@ -42,9 +49,10 @@ import android.view.KeyEvent;
  * <ol>
  * <li><a href="#DeveloperGuide">Developer Guide</a>
  * <li><a href="#HowSearchIsInvoked">How Search Is Invoked</a>
- * <li><a href="#QuerySearchApplications">Query-Search Applications</a>
- * <li><a href="#FilterSearchApplications">Filter-Search Applications</a>
+ * <li><a href="#ImplementingSearchForYourApp">Implementing Search for Your App</a>
  * <li><a href="#Suggestions">Search Suggestions</a>
+ * <li><a href="#ExposingSearchSuggestionsToQuickSearchBox">Exposing Search Suggestions to
+ * Quick Search Box</a></li>
  * <li><a href="#ActionKeys">Action Keys</a>
  * <li><a href="#SearchabilityMetadata">Searchability Metadata</a>
  * <li><a href="#PassingSearchContext">Passing Search Context</a>
@@ -55,37 +63,18 @@ import android.view.KeyEvent;
  * <h3>Developer Guide</h3>
  * 
  * <p>The ability to search for user, system, or network based data is considered to be
- * a core user-level feature of the android platform.  At any time, the user should be
+ * a core user-level feature of the Android platform.  At any time, the user should be
  * able to use a familiar command, button, or keystroke to invoke search, and the user
- * should be able to search any data which is available to them.  The goal is to make search 
- * appear to the user as a seamless, system-wide feature.
+ * should be able to search any data which is available to them.
  * 
- * <p>In terms of implementation, there are three broad classes of Applications:
- * <ol>
- * <li>Applications that are not inherently searchable</li>
- * <li>Query-Search Applications</li>
- * <li>Filter-Search Applications</li>
- * </ol>
- * <p>These categories, as well as related topics, are discussed in
- * the sections below.
+ * <p>To make search appear to the user as a seamless system-wide feature, the application
+ * framework centrally controls it, offering APIs to individual applications to control how they
+ * are searched. Applications can customize how search is invoked, how the search dialog looks,
+ * and what type of search results are available, including suggestions that are available as the
+ * user types.
  *
- * <p>Even if your application is not <i>searchable</i>, it can still support the invocation of
- * search.  Please review the section <a href="#HowSearchIsInvoked">How Search Is Invoked</a>
- * for more information on how to support this.
- * 
- * <p>Many applications are <i>searchable</i>.  These are 
- * the applications which can convert a query string into a list of results.  
- * Within this subset, applications can be grouped loosely into two families:  
- * <ul><li><i>Query Search</i> applications perform batch-mode searches - each query string is 
- * converted to a list of results.</li>
- * <li><i>Filter Search</i> applications provide live filter-as-you-type searches.</li></ul>
- * <p>Generally speaking, you would use query search for network-based data, and filter 
- * search for local data, but this is not a hard requirement and applications 
- * are free to use the model that fits them best (or invent a new model).
- * <p>It should be clear that the search implementation decouples "search 
- * invocation" from "searchable".  This satisfies the goal of making search appear
- * to be "universal".  The user should be able to launch any search from 
- * almost any context.
+ * <p>Even applications which are not searchable will by default support the invocation of
+ * search to trigger Quick Search Box, the system's 'global search'.
  * 
  * <a name="HowSearchIsInvoked"></a>
  * <h3>How Search Is Invoked</h3>
@@ -93,14 +82,15 @@ import android.view.KeyEvent;
  * <p>Unless impossible or inapplicable, all applications should support
  * invoking the search UI.  This means that when the user invokes the search command, 
  * a search UI will be presented to them.  The search command is currently defined as a menu
- * item called "Search" (with an alphabetic shortcut key of "S"), or on some devices, a dedicated
+ * item called "Search" (with an alphabetic shortcut key of "S"), or on many devices, a dedicated
  * search button key.
- * <p>If your application is not inherently searchable, you can also allow the search UI
- * to be invoked in a "web search" mode.  If the user enters a search term and clicks the 
- * "Search" button, this will bring the browser to the front and will launch a web-based
+ * <p>If your application is not inherently searchable, the default implementation will cause
+ * the search UI to be invoked in a "global search" mode known as Quick Search Box.  As the user
+ * types, search suggestions from across the device and the web will be surfaced, and if they
+ * click the "Search" button, this will bring the browser to the front and will launch a web-based
  * search.  The user will be able to click the "Back" button and return to your application.
  * <p>In general this is implemented by your activity, or the {@link android.app.Activity Activity}
- * base class, which captures the search command and invokes the Search Manager to 
+ * base class, which captures the search command and invokes the SearchManager to 
  * display and operate the search UI.  You can also cause the search UI to be presented in response
  * to user keystrokes in your activity (for example, to instantly start filter searching while
  * viewing a list and typing any key).
@@ -117,7 +107,7 @@ import android.view.KeyEvent;
  * button or menu item - and invoking the search UI directly.</li>
  * <li>You can provide a <i>type-to-search</i> feature, in which search is invoked automatically
  * when the user enters any characters.</li>
- * <li>Even if your application is not inherently searchable, you can allow web search, 
+ * <li>Even if your application is not inherently searchable, you can allow global search, 
  * via the search key (or even via a search menu item).
  * <li>You can disable search entirely.  This should only be used in very rare circumstances,
  * as search is a system-wide feature and users will expect it to be available in all contexts.</li>
@@ -141,21 +131,23 @@ import android.view.KeyEvent;
  * setDefaultKeyMode(DEFAULT_KEYS_SEARCH_LOCAL);   // search within your activity
  * setDefaultKeyMode(DEFAULT_KEYS_SEARCH_GLOBAL);  // search using platform global search</pre>
  * 
- * <p><b>How to enable web-based search.</b>  In addition to searching within your activity or
- * application, you can also use the Search Manager to invoke a platform-global search, typically
- * a web search.  There are two ways to do this:
+ * <p><b>How to enable global search with Quick Search Box.</b>  In addition to searching within
+ * your activity or application, you can also use the Search Manager to invoke a platform-global
+ * search, which uses Quick Search Box to search across the device and the web. There are two ways
+ * to do this:
  * <ul><li>You can simply define "search" within your application or activity to mean global search.
  * This is described in more detail in the 
  * <a href="#SearchabilityMetadata">Searchability Metadata</a> section.  Briefly, you will
  * add a single meta-data entry to your manifest, declaring that the default search
  * for your application is "*".  This indicates to the system that no application-specific
  * search activity is provided, and that it should launch web-based search instead.</li>
- * <li>You can specify this at invocation time via default keys (see above), overriding
- * {@link android.app.Activity#onSearchRequested}, or via a direct call to 
- * {@link android.app.Activity#startSearch}.  This is most useful if you wish to provide local
- * searchability <i>and</i> access to global search.</li></ul> 
+ * <li>Simply do nothing and the default implementation of
+ * {@link android.app.Activity#onSearchRequested} will cause global search to be triggered.
+ * (You can also always trigger search via a direct call to {@link android.app.Activity#startSearch}.
+ * This is most useful if you wish to provide local searchability <i>and</i> access to global
+ * search.)</li></ul> 
  * 
- * <p><b>How to disable search from your activity.</b>  search is a system-wide feature and users
+ * <p><b>How to disable search from your activity.</b> Search is a system-wide feature and users
  * will expect it to be available in all contexts.  If your UI design absolutely precludes
  * launching search, override {@link android.app.Activity#onSearchRequested onSearchRequested}
  * as shown:
@@ -165,7 +157,7 @@ import android.view.KeyEvent;
  *    return false;
  * }</pre> 
  * 
- * <p><b>Managing focus and knowing if Search is active.</b>  The search UI is not a separate
+ * <p><b>Managing focus and knowing if search is active.</b>  The search UI is not a separate
  * activity, and when the UI is invoked or dismissed, your activity will not typically be paused,
  * resumed, or otherwise notified by the methods defined in 
  * <a href="{@docRoot}guide/topics/fundamentals.html#actlife">Application Fundamentals: 
@@ -187,17 +179,10 @@ import android.view.KeyEvent;
  * the search UI.  More details on searchable activities and search intents are provided in the
  * sections below.
  *
- * <a name="QuerySearchApplications"></a>
- * <h3>Query-Search Applications</h3>
- * 
- * <p>Query-search applications are those that take a single query (e.g. a search
- * string) and present a set of results that may fit.  Primary examples include
- * web queries, map lookups, or email searches (with the common thread being
- * network query dispatch).  It may also be the case that certain local searches
- * are treated this way.  It's up to the application to decide.
+ * <a name="ImplementingSearchForYourApp"></a>
+ * <h3>Implementing Search for Your App</h3>
  *
- * <p><b>What you need to do:</b>  The following steps are necessary in order to
- * implement query search.
+ * <p>The following steps are necessary in order to implement search.
  * <ul>
  * <li>Implement search invocation as described above.  (Strictly speaking, 
  * these are decoupled, but it would make little sense to be "searchable" but not 
@@ -213,16 +198,16 @@ import android.view.KeyEvent;
  * {@link #QUERY getStringExtra(SearchManager.QUERY)}.</li>
  * <li>To identify and support your searchable activity, you'll need to 
  * provide an XML file providing searchability configuration parameters, a reference to that 
- * in your searchable activity's <a href="{@docRoot}guide/topics/manifest/manifest-intro.html">manifest</a>
- * entry, and an intent-filter declaring that you can 
- * receive ACTION_SEARCH intents.  This is described in more detail in the 
- * <a href="#SearchabilityMetadata">Searchability Metadata</a> section.</li>
- * <li>Your <a href="{@docRoot}guide/topics/manifest/manifest-intro.html">manifest</a> also needs a metadata entry
- * providing a global reference to the searchable activity.  This is the "glue" directing the search
- * UI, when invoked from any of your <i>other</i> activities, to use your application as the
- * default search context.  This is also described in more detail in the 
+ * in your searchable activity's
+ * <a href="{@docRoot}guide/topics/manifest/manifest-intro.html">manifest</a> entry, and an
+ * intent-filter declaring that you can receive ACTION_SEARCH intents. This is described in more
+ * detail in the <a href="#SearchabilityMetadata">Searchability Metadata</a> section.</li>
+ * <li>Your <a href="{@docRoot}guide/topics/manifest/manifest-intro.html">manifest</a> also needs a
+ * metadata entry providing a global reference to the searchable activity. This is the "glue"
+ * directing the search UI, when invoked from any of your <i>other</i> activities, to use your
+ * application as the default search context.  This is also described in more detail in the 
  * <a href="#SearchabilityMetadata">Searchability Metadata</a> section.</li> 
- * <li>Finally, you may want to define your search results activity as with the 
+ * <li>Finally, you may want to define your search results activity as single-top with the 
  * {@link android.R.attr#launchMode singleTop} launchMode flag.  This allows the system 
  * to launch searches from/to the same activity without creating a pile of them on the 
  * activity stack.  If you do this, be sure to also override 
@@ -248,25 +233,10 @@ import android.view.KeyEvent;
  *     doSearchWithQuery(queryString);
  * }</pre>
  * 
- * <a name="FilterSearchApplications"></a>
- * <h3>Filter-Search Applications</h3>
- * 
- * <p>Filter-search applications are those that use live text entry (e.g. keystrokes)) to
- * display and continuously update a list of results.  Primary examples include applications
- * that use locally-stored data.
- * 
- * <p>Filter search is not directly supported by the Search Manager.  Most filter search
- * implementations will use variants of {@link android.widget.Filterable}, such as a 
- * {@link android.widget.ListView} bound to a {@link android.widget.SimpleCursorAdapter}.  However,
- * you may find it useful to mix them together, by declaring your filtered view searchable.  With
- * this configuration, you can still present the standard search dialog in all activities
- * within your application, but transition to a filtered search when you enter the activity
- * and display the results.
- * 
  * <a name="Suggestions"></a>
  * <h3>Search Suggestions</h3>
  * 
- * <p>A powerful feature of the Search Manager is the ability of any application to easily provide
+ * <p>A powerful feature of the search system is the ability of any application to easily provide
  * live "suggestions" in order to prompt the user.  Each application implements suggestions in a 
  * different, unique, and appropriate way.  Suggestions be drawn from many sources, including but 
  * not limited to:
@@ -278,11 +248,11 @@ import android.view.KeyEvent;
  * <li>Summaries of possible results</li>
  * </ul>
  * 
- * <p>Another feature of suggestions is that they can expose queries or results before the user
- * ever visits the application.  This reduces the amount of context switching required, and helps
- * the user access their data quickly and with less context shifting.  In order to provide this
- * capability, suggestions are accessed via a 
- * {@link android.content.ContentProvider Content Provider}.  
+ * <p>Once an application is configured to provide search suggestions, those same suggestions can
+ * easily be made available to the system-wide Quick Search Box, providing faster access to its
+ * content from one central prominent place. See
+ * <a href="#ExposingSearchSuggestionsToQuickSearchBox">Exposing Search Suggestions to Quick Search
+ * Box</a> for more details.
  * 
  * <p>The primary form of suggestions is known as <i>queried suggestions</i> and is based on query
  * text that the user has already typed.  This would generally be based on partial matches in
@@ -292,7 +262,8 @@ import android.view.KeyEvent;
  * available, they should be weighted based on other factors - for example, most recent queries 
  * or most recent results.
  * 
- * <p><b>Overview of how suggestions are provided.</b>  When the search manager identifies a 
+ * <p><b>Overview of how suggestions are provided.</b>  Suggestions are accessed via a
+ * {@link android.content.ContentProvider Content Provider}. When the search manager identifies a 
  * particular activity as searchable, it will check for certain metadata which indicates that
  * there is also a source of suggestions.  If suggestions are provided, the following steps are
  * taken.
@@ -398,7 +369,26 @@ import android.view.KeyEvent;
  * forget to decode it.  (See {@link android.net.Uri#getPathSegments} and
  * {@link android.net.Uri#getLastPathSegment} for helpful utilities you can use here.)</li>
  * </ul>
- * 
+ *
+ * <p><b>Providing access to Content Providers that require permissions.</b>  If your content
+ * provider declares an android:readPermission in your application's manifest, you must provide
+ * access to the search infrastructure to the search suggestion path by including a path-permission
+ * that grants android:readPermission access to "android.permission.GLOBAL_SEARCH".  Granting access
+ * explicitly to the search infrastructure ensures it will be able to access the search suggestions
+ * without needing to know ahead of time any other details of the permissions protecting your
+ * provider.  Content providers that require no permissions are already available to the search
+ * infrastructure.  Here is an example of a provider that protects access to it with permissions,
+ * and provides read access to the search infrastructure to the path that it expects to receive the
+ * suggestion query on:
+ * <pre class="prettyprint">
+ * &lt;provider android:name="MyProvider" android:authorities="myprovider"
+ *        android:readPermission="android.permission.READ_MY_DATA"
+ *        android:writePermission="android.permission.WRITE_MY_DATA"&gt;
+ *    &lt;path-permission android:path="/search_suggest_query"
+ *            android:readPermission="android.permission.GLOBAL_SEARCH" /&gt;
+ * &lt;/provider&gt;
+ * </pre>
+ *
  * <p><b>Handling empty queries.</b>  Your application should handle the "empty query"
  * (no user text entered) case properly, and generate useful suggestions in this case.  There are a
  * number of ways to do this;  Two are outlined here:
@@ -406,7 +396,7 @@ import android.view.KeyEvent;
  * unfiltered.  (example: People)</li>
  * <li>For a query search, you could simply present the most recent queries.  This allows the user
  * to quickly repeat a recent search.</li></ul>
- * 
+ *
  * <p><b>The Format of Individual Suggestions.</b>  Your suggestions are communicated back to the
  * Search Manager by way of a {@link android.database.Cursor Cursor}.  The Search Manager will
  * usually pass a null Projection, which means that your provider can simply return all appropriate
@@ -439,20 +429,18 @@ import android.view.KeyEvent;
  *     
  *     <tr><th>{@link #SUGGEST_COLUMN_ICON_1}</th>
  *         <td>If your cursor includes this column, then all suggestions will be provided in an
- *             icons+text format.  This value should be a reference (resource ID) of the icon to
+ *             icons+text format.  This value should be a reference to the icon to
  *             draw on the left side, or it can be null or zero to indicate no icon in this row.
- *             You must provide both cursor columns, or neither.
  *             </td>
- *         <td align="center">No, but required if you also have {@link #SUGGEST_COLUMN_ICON_2}</td>
+ *         <td align="center">No.</td>
  *     </tr>
  *     
  *     <tr><th>{@link #SUGGEST_COLUMN_ICON_2}</th>
  *         <td>If your cursor includes this column, then all suggestions will be provided in an
- *             icons+text format.  This value should be a reference (resource ID) of the icon to
+ *             icons+text format.  This value should be a reference to the icon to
  *             draw on the right side, or it can be null or zero to indicate no icon in this row.
- *             You must provide both cursor columns, or neither.
  *             </td>
- *         <td align="center">No, but required if you also have {@link #SUGGEST_COLUMN_ICON_1}</td>
+ *         <td align="center">No.</td>
  *     </tr>
  *     
  *     <tr><th>{@link #SUGGEST_COLUMN_INTENT_ACTION}</th>
@@ -484,13 +472,42 @@ import android.view.KeyEvent;
  *         <td align="center">No</td>
  *     </tr>
  *     
+ *     <tr><th>{@link #SUGGEST_COLUMN_INTENT_EXTRA_DATA}</th>
+ *         <td>If this column exists <i>and</i> this element exists at a given row, this is the
+ *             data that will be used when forming the suggestion's intent.  If not provided,
+ *             the Intent's extra data field will be null.  This column allows suggestions to
+ *             provide additional arbitrary data which will be included as an extra under the
+ *             key {@link #EXTRA_DATA_KEY}.</td>
+ *         <td align="center">No.</td>
+ *     </tr>
+ *
  *     <tr><th>{@link #SUGGEST_COLUMN_QUERY}</th>
  *         <td>If this column exists <i>and</i> this element exists at the given row, this is the 
  *             data that will be used when forming the suggestion's query.</td>
  *         <td align="center">Required if suggestion's action is 
  *             {@link android.content.Intent#ACTION_SEARCH ACTION_SEARCH}, optional otherwise.</td>
  *     </tr>
- *     
+ *
+ *     <tr><th>{@link #SUGGEST_COLUMN_SHORTCUT_ID}</th>
+ *         <td>This column is used to indicate whether a search suggestion should be stored as a
+ *             shortcut, and whether it should be validated.  Shortcuts are usually formed when the
+ *             user clicks a suggestion from Quick Search Box.  If missing, the result will be
+ *             stored as a shortcut and never refreshed.  If set to
+ *             {@link #SUGGEST_NEVER_MAKE_SHORTCUT}, the result will not be stored as a shortcut.
+ *             Otherwise, the shortcut id will be used to check back for for an up to date
+ *             suggestion using {@link #SUGGEST_URI_PATH_SHORTCUT}. Read more about shortcut
+ *             refreshing in the section about
+ *             <a href="#ExposingSearchSuggestionsToQuickSearchBox">exposing search suggestions to
+ *             Quick Search Box</a>.</td>
+ *         <td align="center">No.  Only applicable to sources included in Quick Search Box.</td>
+ *     </tr>
+ *
+ *     <tr><th>{@link #SUGGEST_COLUMN_SPINNER_WHILE_REFRESHING}</th>
+ *         <td>This column is used to specify that a spinner should be shown in lieu of an icon2
+ *             while the shortcut of this suggestion is being refreshed in Quick Search Box.</td>
+ *         <td align="center">No.  Only applicable to sources included in Quick Search Box.</td>
+ *     </tr>
+ * 
  *     <tr><th><i>Other Columns</i></th>
  *         <td>Finally, if you have defined any <a href="#ActionKeys">Action Keys</a> and you wish 
  *             for them to have suggestion-specific definitions, you'll need to define one 
@@ -564,6 +581,68 @@ import android.view.KeyEvent;
  * query text is provided and the SUGGEST_COLUMN_INTENT_DATA values are not suitable for user 
  * inspection and editing.</li></ul>
  *
+ * <a name="ExposingSearchSuggestionsToQuickSearchBox"></a>
+ * <h3>Exposing Search Suggestions to Quick Search Box</h3>
+ * 
+ * <p>Once your application is set up to provide search suggestions, making them available to the
+ * globally accessable Quick Search Box is as easy as setting android:includeInGlobalSearch to
+ * "true" in your searchable metadata file.  Beyond that, here are some more details of how
+ * suggestions interact with Quick Search Box, and optional ways that you may customize suggestions
+ * for your application.
+ * 
+ * <p><b>Important Note:</b>  By default, your application will not be enabled as a suggestion
+ * provider (or "searchable item") in Quick Search Box. Once your app is installed, the user must
+ * enable it as a "searchable item" in the Search settings in order to receive your app's
+ * suggestions in Quick Search Box. You should consider how to message this to users of your app -
+ * perhaps with a note to the user the first time they launch the app about how to enable search
+ * suggestions. This gives your app a chance to be queried for suggestions as the user types into
+ * Quick Search Box, though exactly how or if your suggestions will be surfaced is decided by Quick
+ * Search Box.
+ *
+ * <p><b>Source Ranking:</b>  Once your application's search results are made available to Quick
+ * Search Box, how they surface to the user for a particular query will be determined as appropriate
+ * by Quick Search Box ranking. This may depend on how many other apps have results for that query,
+ * and how often the user has clicked on your results compared to the other apps - but there is no
+ * guarantee about how ranking will occur, or whether your app's suggestions will show at all for
+ * a given query.  In general, you can expect that providing quality results will increase the
+ * likelihood that your app's suggestions are provided in a prominent position, and apps that
+ * provide lower quality suggestions will be more likely to be ranked lower and/or not displayed.
+ *
+ * <p><b>Search Settings:</b>  Each app that is available to Quick Search Box has an entry in the
+ * system settings where the user can enable or disable the inclusion of its results.  Below the
+ * name of the application, each application may provide a brief description of what kind of
+ * information will be made available via a search settings description string pointed to by the
+ * android:searchSettingsDescription attribute in the searchable metadata. Note that the
+ * user will need to visit this settings menu to enable search suggestions for your app before your
+ * app will have a chance to provide search suggestions to Quick Search Box - see the section
+ * called "Important Note" above.
+ *
+ * <p><b>Shortcuts:</b>  Suggestions that are clicked on by the user may be automatically made into
+ * shortcuts, which are suggestions that have been copied from your provider in order to be quickly
+ * displayed without the need to re-query the original sources. Shortcutted suggestions may be
+ * displayed for the query that yielded the suggestion and for any prefixes of that query. You can
+ * request how to have your app's suggestions made into shortcuts, and whether they should be
+ * refreshed, using the {@link #SUGGEST_COLUMN_SHORTCUT_ID} column:
+ * <ul><li>Suggestions that do not include a shortcut id column will be made into shortcuts and
+ * never refreshed.  This makes sense for suggestions that refer to data that will never be changed
+ * or removed.</li>
+ * <li>Suggestions that include a shortcut id will be re-queried for a fresh version of the
+ * suggestion each time the shortcut is displayed.  The shortcut will be quickly displayed with
+ * whatever data was most recently available until the refresh query returns, after which the
+ * suggestion will be dynamically refreshed with the up to date information.  The shortcut refresh
+ * query will be sent to your suggestion provider with a uri of {@link #SUGGEST_URI_PATH_SHORTCUT}.
+ * The result should contain one suggestion using the same columns as the suggestion query, or be
+ * empty, indicating that the shortcut is no longer valid.  Shortcut ids make sense when referring
+ * to data that may change over time, such as a contact's presence status.  If a suggestion refers
+ * to data that could take longer to refresh, such as a network based refresh of a stock quote, you
+ * may include {@link #SUGGEST_COLUMN_SPINNER_WHILE_REFRESHING} to show a progress spinner for the
+ * right hand icon until the refresh is complete.</li>
+ * <li>Finally, to prevent a suggestion from being copied into a shortcut, you may provide a
+ * shortcut id with a value of {@link #SUGGEST_NEVER_MAKE_SHORTCUT}.</li></ul>
+ * 
+ * Note that Quick Search Box will ultimately decide whether to shortcut your app's suggestions,
+ * considering these values as a strong request from your application.
+ * 
  * <a name="ActionKeys"></a>
  * <h3>Action Keys</h3>
  * 
@@ -699,7 +778,7 @@ import android.view.KeyEvent;
  *             entered.</td>
  *         <td align="center">No</td>
  *     </tr>
- *     
+ *
  *     <tr><th>android:searchButtonText</th>
  *         <td>If provided, this text will replace the default text in the "Search" button.</td>
  *         <td align="center">No</td>
@@ -736,7 +815,12 @@ import android.view.KeyEvent;
  *                         and editing.</td>
  *                 </tr>
  *                 </tbody>
- *            </table></td>
+ *            </table>
+ *            Note that the icon of your app will likely be shown alongside any badge you specify,
+ *            to differentiate search in your app from Quick Search Box. The display of this icon
+ *            is not under the app's control.
+ *         </td>
+ *            
  *         <td align="center">No</td>
  *     </tr>
  *     
@@ -807,7 +891,7 @@ import android.view.KeyEvent;
  * this way would be if you wish to partition it into separate sections with different search 
  * behaviors;  Otherwise this configuration is not recommended.
  * 
- * <p><b>Additional Metadata for search suggestions.</b>  If you have defined a content provider
+ * <p><b>Additional metadata for search suggestions.</b>  If you have defined a content provider
  * to generate search suggestions, you'll need to publish it to the system, and you'll need to 
  * provide a bit of additional XML metadata in order to configure communications with it.
  * 
@@ -879,8 +963,49 @@ import android.view.KeyEvent;
  *     
  *     </tbody>
  * </table>
- * 
- * <p><b>Additional Metadata for search action keys.</b>  For each action key that you would like to
+ *
+ * <p>Elements of search metadata that configure search suggestions being available to Quick Search
+ * Box:
+ * <table border="2" width="85%" align="center" frame="hsides" rules="rows">
+ *
+ *     <thead>
+ *     <tr><th>Attribute</th> <th>Description</th> <th>Required?</th></tr>
+ *     </thead>
+ *
+ *     <tr><th>android:includeInGlobalSearch</th>
+ *         <td>If true, indicates the search suggestions provided by your application should be
+ *             included in the globally accessible Quick Search Box.  The attributes below are only
+ *             applicable if this is set to true.</td>
+ *         <td align="center">Yes</td>
+ *     </tr>
+ *
+ *     <tr><th>android:searchSettingsDescription</th>
+ *         <td>If provided, provides a brief description of the search suggestions that are provided
+ *             by your application to Quick Search Box, and will be displayed in the search settings
+ *             entry for your application.</td>
+ *         <td align="center">No</td>
+ *     </tr>
+ *
+ *     <tr><th>android:queryAfterZeroResults</th>
+ *         <td>Indicates whether a source should be invoked for supersets of queries it has
+ *             returned zero results for in the past.  For example, if a source returned zero
+ *             results for "bo", it would be ignored for "bob".  If set to false, this source
+ *             will only be ignored for a single session; the next time the search dialog is
+ *             invoked, all sources will be queried.  The default value is false.</td>
+ *         <td align="center">No</td>
+ *     </tr>
+ *
+ *     <tr><th>android:searchSuggestThreshold</th>
+ *         <td>Indicates the minimum number of characters needed to trigger a source from Quick
+ *             Search Box.  Only guarantees that a source will not be queried for anything shorter
+ *             than the threshold.  The default value is 0.</td>
+ *         <td align="center">No</td>
+ *     </tr>
+ *
+ *     </tbody>
+ * </table>
+ *
+ * <p><b>Additional metadata for search action keys.</b>  For each action key that you would like to
  * define, you'll need to add an additional element defining that key, and using the attributes
  * discussed in <a href="#ActionKeys">Action Keys</a>.  A simple example is shown here:
  * 
@@ -956,6 +1081,84 @@ import android.view.KeyEvent;
  *     </tbody>
  * </table>
  * 
+ * <p><b>Additional metadata for enabling voice search.</b>  To enable voice search for your
+ * activity, you can add fields to the metadata that enable and configure voice search.  When
+ * enabled (and available on the device), a voice search button will be displayed in the
+ * Search UI.  Clicking this button will launch a voice search activity.  When the user has
+ * finished speaking, the voice search phrase will be transcribed into text and presented to the
+ * searchable activity as if it were a typed query.
+ * 
+ * <p>Elements of search metadata that support voice search:
+ * <table border="2" width="85%" align="center" frame="hsides" rules="rows">
+ *
+ *     <thead>
+ *     <tr><th>Attribute</th> <th>Description</th> <th>Required?</th></tr>
+ *     </thead>
+ *     
+ *     <tr><th>android:voiceSearchMode</th>
+ *         <td>If provided and non-zero, enables voice search.  (Voice search may not be
+ *             provided by the device, in which case these flags will have no effect.)  The
+ *             following mode bits are defined:
+ *             <table border="2" align="center" frame="hsides" rules="rows">
+ *                 <tbody>
+ *                 <tr><th>showVoiceSearchButton</th>
+ *                     <td>If set, display a voice search button.  This only takes effect if voice
+ *                         search is available on the device.  If set, then launchWebSearch or
+ *                         launchRecognizer must also be set.</td>
+ *                 </tr>
+ *                 <tr><th>launchWebSearch</th>
+ *                     <td>If set, the voice search button will take the user directly to a 
+ *                         built-in voice web search activity.  Most applications will not use this
+ *                         flag, as it will take the user away from the activity in which search
+ *                         was invoked.</td>
+ *                 </tr>
+ *                 <tr><th>launchRecognizer</th>
+ *                     <td>If set, the voice search button will take the user directly to a
+ *                         built-in voice recording activity.  This activity will prompt the user
+ *                         to speak, transcribe the spoken text, and forward the resulting query
+ *                         text to the searchable activity, just as if the user had typed it into
+ *                         the search UI and clicked the search button.</td>
+ *                 </tr>
+ *                 </tbody>
+ *            </table></td>
+ *         <td align="center">No</td>
+ *     </tr>
+ *     
+ *     <tr><th>android:voiceLanguageModel</th>
+ *         <td>If provided, this specifies the language model that should be used by the voice
+ *             recognition system.  
+ *             See {@link android.speech.RecognizerIntent#EXTRA_LANGUAGE_MODEL}
+ *             for more information.  If not provided, the default value
+ *             {@link android.speech.RecognizerIntent#LANGUAGE_MODEL_FREE_FORM} will be used.</td>
+ *         <td align="center">No</td>
+ *     </tr>
+ *     
+ *     <tr><th>android:voicePromptText</th>
+ *         <td>If provided, this specifies a prompt that will be displayed during voice input.
+ *             (If not provided, a default prompt will be displayed.)</td>
+ *         <td align="center">No</td>
+ *     </tr>
+ *     
+ *     <tr><th>android:voiceLanguage</th>
+ *         <td>If provided, this specifies the spoken language to be expected.  This is only
+ *             needed if it is different from the current value of
+ *             {@link java.util.Locale#getDefault()}.
+ *             </td>
+ *         <td align="center">No</td>
+ *     </tr>
+ *     
+ *     <tr><th>android:voiceMaxResults</th>
+ *         <td>If provided, enforces the maximum number of results to return, including the "best"
+ *             result which will always be provided as the SEARCH intent's primary query.  Must be
+ *             one or greater.  Use {@link android.speech.RecognizerIntent#EXTRA_RESULTS} 
+ *             to get the results from the intent.  If not provided, the recognizer will choose
+ *             how many results to return.</td>
+ *         <td align="center">No</td>
+ *     </tr>
+ * 
+ *     </tbody>
+ * </table>
+ * 
  * <a name="PassingSearchContext"></a>
  * <h3>Passing Search Context</h3>
  * 
@@ -1025,6 +1228,10 @@ import android.view.KeyEvent;
 public class SearchManager 
         implements DialogInterface.OnDismissListener, DialogInterface.OnCancelListener
 {
+
+    private static final boolean DBG = false;
+    private static final String TAG = "SearchManager";
+
     /**
      * This is a shortcut definition for the default menu key to use for invoking search.
      * 
@@ -1048,6 +1255,20 @@ public class SearchManager
     public final static String QUERY = "query";
 
     /**
+     * Intent extra data key: Use this key with
+     * {@link android.content.Intent#getStringExtra
+     *  content.Intent.getStringExtra()}
+     * to obtain the query string typed in by the user.
+     * This may be different from the value of {@link #QUERY}
+     * if the intent is the result of selecting a suggestion.
+     * In that case, {@link #QUERY} will contain the value of
+     * {@link #SUGGEST_COLUMN_QUERY} for the suggestion, and
+     * {@link #USER_QUERY} will contain the string typed by the
+     * user.
+     */
+    public final static String USER_QUERY = "user_query";
+
+    /**
      * Intent extra data key: Use this key with Intent.ACTION_SEARCH and
      * {@link android.content.Intent#getBundleExtra
      *  content.Intent.getBundleExtra()}
@@ -1065,7 +1286,7 @@ public class SearchManager
      * @hide
      */
     public final static String SOURCE = "source";
-    
+
     /**
      * Intent extra data key: Use this key with Intent.ACTION_SEARCH and
      * {@link android.content.Intent#getIntExtra content.Intent.getIntExtra()}
@@ -1076,6 +1297,60 @@ public class SearchManager
      */
     public final static String ACTION_KEY = "action_key";
     
+    /**
+     * Intent component name key: This key will be used for the extra populated by the
+     * {@link #SUGGEST_COLUMN_INTENT_COMPONENT_NAME} column.
+     *
+     * {@hide}
+     */
+    public final static String COMPONENT_NAME_KEY = "intent_component_name_key";
+
+    /**
+     * Intent extra data key: This key will be used for the extra populated by the
+     * {@link #SUGGEST_COLUMN_INTENT_EXTRA_DATA} column.
+     */
+    public final static String EXTRA_DATA_KEY = "intent_extra_data_key";
+
+    /**
+     * Defines the constants used in the communication between {@link android.app.SearchDialog} and
+     * the global search provider via {@link Cursor#respond(android.os.Bundle)}.
+     *
+     * @hide
+     */
+    public static class DialogCursorProtocol {
+
+        /**
+         * The sent bundle will contain this integer key, with a value set to one of the events
+         * below.
+         */
+        public final static String METHOD = "DialogCursorProtocol.method";
+
+        /**
+         * After data has been refreshed.
+         */
+        public final static int POST_REFRESH = 0;
+        public final static String POST_REFRESH_RECEIVE_ISPENDING
+                = "DialogCursorProtocol.POST_REFRESH.isPending";
+        public final static String POST_REFRESH_RECEIVE_DISPLAY_NOTIFY
+                = "DialogCursorProtocol.POST_REFRESH.displayNotify";
+
+        /**
+         * When a position has been clicked.
+         */
+        public final static int CLICK = 2;
+        public final static String CLICK_SEND_POSITION
+                = "DialogCursorProtocol.CLICK.sendPosition";
+        public final static String CLICK_SEND_MAX_DISPLAY_POS
+                = "DialogCursorProtocol.CLICK.sendDisplayPosition";
+        public final static String CLICK_RECEIVE_SELECTED_POS
+                = "DialogCursorProtocol.CLICK.receiveSelectedPosition";
+
+        /**
+         * When the threshold received in {@link #POST_REFRESH_RECEIVE_DISPLAY_NOTIFY} is displayed.
+         */
+        public final static int THRESH_HIT = 3;
+    }
+
     /**
      * Intent extra data key: Use this key with Intent.ACTION_SEARCH and
      * {@link android.content.Intent#getStringExtra content.Intent.getStringExtra()}
@@ -1092,13 +1367,64 @@ public class SearchManager
      * Typically you'll use this with a URI matcher.
      */
     public final static String SUGGEST_URI_PATH_QUERY = "search_suggest_query";
-    
+
     /**
      * MIME type for suggestions data.  You'll use this in your suggestions content provider
      * in the getType() function.
      */
-    public final static String SUGGEST_MIME_TYPE = 
-                                  "vnd.android.cursor.dir/vnd.android.search.suggest";
+    public final static String SUGGEST_MIME_TYPE =
+            "vnd.android.cursor.dir/vnd.android.search.suggest";
+
+    /**
+     * Uri path for shortcut validation.  This is the path that the search manager will use when
+     * querying your content provider to refresh a shortcutted suggestion result and to check if it
+     * is still valid.  When asked, a source may return an up to date result, or no result.  No
+     * result indicates the shortcut refers to a no longer valid sugggestion.
+     *
+     * @see #SUGGEST_COLUMN_SHORTCUT_ID
+     */
+    public final static String SUGGEST_URI_PATH_SHORTCUT = "search_suggest_shortcut";
+    
+    /**
+     * MIME type for shortcut validation.  You'll use this in your suggestions content provider
+     * in the getType() function.
+     */
+    public final static String SHORTCUT_MIME_TYPE = 
+            "vnd.android.cursor.item/vnd.android.search.suggest";
+
+
+    /**
+     * The authority of the provider to report clicks to when a click is detected after pivoting
+     * into a specific app's search from global search.
+     *
+     * In addition to the columns below, the suggestion columns are used to pass along the full
+     * suggestion so it can be shortcutted.
+     *
+     * @hide
+     */
+    public final static String SEARCH_CLICK_REPORT_AUTHORITY =
+            "com.android.globalsearch.stats";
+
+    /**
+     * The path the write goes to.
+     *
+     * @hide
+     */
+    public final static String SEARCH_CLICK_REPORT_URI_PATH = "click";
+
+    /**
+     * The column storing the query for the click.
+     *
+     * @hide
+     */
+    public final static String SEARCH_CLICK_REPORT_COLUMN_QUERY = "query";
+
+    /**
+     * The column storing the component name of the application that was pivoted into.
+     *
+     * @hide
+     */
+    public final static String SEARCH_CLICK_REPORT_COLUMN_COMPONENT = "component";
 
     /**
      * Column name for suggestions cursor.  <i>Unused - can be null or column can be omitted.</i>
@@ -1117,18 +1443,34 @@ public class SearchManager
     public final static String SUGGEST_COLUMN_TEXT_2 = "suggest_text_2";
     /**
      * Column name for suggestions cursor.  <i>Optional.</i>  If your cursor includes this column,
-     *  then all suggestions will be provided in format that includes space for two small icons,
+     *  then all suggestions will be provided in a format that includes space for two small icons,
      *  one at the left and one at the right of each suggestion.  The data in the column must
-     *  be a a resource ID for the icon you wish to have displayed.  If you include this column,
-     *  you must also include {@link #SUGGEST_COLUMN_ICON_2}.
+     *  be a resource ID of a drawable, or a URI in one of the following formats:
+     *
+     * <ul>
+     * <li>content ({@link android.content.ContentResolver#SCHEME_CONTENT})</li>
+     * <li>android.resource ({@link android.content.ContentResolver#SCHEME_ANDROID_RESOURCE})</li>
+     * <li>file ({@link android.content.ContentResolver#SCHEME_FILE})</li>
+     * </ul>
+     *
+     * See {@link android.content.ContentResolver#openAssetFileDescriptor(Uri, String)} 
+     * for more information on these schemes. 
      */
     public final static String SUGGEST_COLUMN_ICON_1 = "suggest_icon_1";
     /**
      * Column name for suggestions cursor.  <i>Optional.</i>  If your cursor includes this column,
-     *  then all suggestions will be provided in format that includes space for two small icons,
+     *  then all suggestions will be provided in a format that includes space for two small icons,
      *  one at the left and one at the right of each suggestion.  The data in the column must
-     *  be a a resource ID for the icon you wish to have displayed.  If you include this column,
-     *  you must also include {@link #SUGGEST_COLUMN_ICON_1}.
+     *  be a resource ID of a drawable, or a URI in one of the following formats:
+     *
+     * <ul>
+     * <li>content ({@link android.content.ContentResolver#SCHEME_CONTENT})</li>
+     * <li>android.resource ({@link android.content.ContentResolver#SCHEME_ANDROID_RESOURCE})</li>
+     * <li>file ({@link android.content.ContentResolver#SCHEME_FILE})</li>
+     * </ul>
+     *
+     * See {@link android.content.ContentResolver#openAssetFileDescriptor(Uri, String)} 
+     * for more information on these schemes. 
      */
     public final static String SUGGEST_COLUMN_ICON_2 = "suggest_icon_2";
     /**
@@ -1153,6 +1495,23 @@ public class SearchManager
     public final static String SUGGEST_COLUMN_INTENT_DATA = "suggest_intent_data";
     /**
      * Column name for suggestions cursor.  <i>Optional.</i>  If this column exists <i>and</i>
+     * this element exists at the given row, this is the data that will be used when
+     * forming the suggestion's intent. If not provided, the Intent's extra data field will be null.
+     * This column allows suggestions to provide additional arbitrary data which will be included as
+     * an extra under the key {@link #EXTRA_DATA_KEY}.
+     */
+    public final static String SUGGEST_COLUMN_INTENT_EXTRA_DATA = "suggest_intent_extra_data";
+    /**
+     * Column name for suggestions cursor.  <i>Optional.</i>  This column allows suggestions
+     *  to provide additional arbitrary data which will be included as an extra under the key
+     *  {@link #COMPONENT_NAME_KEY}. For use by the global search system only - if other providers
+     *  attempt to use this column, the value will be overwritten by global search.
+     *
+     * @hide
+     */
+    public final static String SUGGEST_COLUMN_INTENT_COMPONENT_NAME = "suggest_intent_component";
+    /**
+     * Column name for suggestions cursor.  <i>Optional.</i>  If this column exists <i>and</i>
      * this element exists at the given row, then "/" and this value will be appended to the data
      * field in the Intent.  This should only be used if the data field has already been set to an
      * appropriate base string.
@@ -1166,24 +1525,142 @@ public class SearchManager
      */
     public final static String SUGGEST_COLUMN_QUERY = "suggest_intent_query";
 
+    /**
+     * Column name for suggestions cursor. <i>Optional.</i>  This column is used to indicate whether
+     * a search suggestion should be stored as a shortcut, and whether it should be refreshed.  If
+     * missing, the result will be stored as a shortcut and never validated.  If set to
+     * {@link #SUGGEST_NEVER_MAKE_SHORTCUT}, the result will not be stored as a shortcut.
+     * Otherwise, the shortcut id will be used to check back for an up to date suggestion using
+     * {@link #SUGGEST_URI_PATH_SHORTCUT}.
+     */
+    public final static String SUGGEST_COLUMN_SHORTCUT_ID = "suggest_shortcut_id";
+
+    /**
+     * Column name for suggestions cursor. <i>Optional.</i>  This column is used to specify the
+     * cursor item's background color if it needs a non-default background color. A non-zero value
+     * indicates a valid background color to override the default.
+     *
+     * @hide For internal use, not part of the public API.
+     */
+    public final static String SUGGEST_COLUMN_BACKGROUND_COLOR = "suggest_background_color";
+    
+    /**
+     * Column name for suggestions cursor. <i>Optional.</i> This column is used to specify
+     * that a spinner should be shown in lieu of an icon2 while the shortcut of this suggestion
+     * is being refreshed.
+     */
+    public final static String SUGGEST_COLUMN_SPINNER_WHILE_REFRESHING =
+            "suggest_spinner_while_refreshing";
+
+    /**
+     * Column value for suggestion column {@link #SUGGEST_COLUMN_SHORTCUT_ID} when a suggestion
+     * should not be stored as a shortcut in global search.
+     */
+    public final static String SUGGEST_NEVER_MAKE_SHORTCUT = "_-1";
+
+    /**
+     * If a suggestion has this value in {@link #SUGGEST_COLUMN_INTENT_ACTION},
+     * the search dialog will switch to a different suggestion source when the
+     * suggestion is clicked. 
+     * 
+     * {@link #SUGGEST_COLUMN_INTENT_DATA} must contain
+     * the flattened {@link ComponentName} of the activity which is to be searched.
+     * 
+     * TODO: Should {@link #SUGGEST_COLUMN_INTENT_DATA} instead contain a URI in the format
+     * used by {@link android.provider.Applications}?
+     * 
+     * TODO: This intent should be protected by the same permission that we use
+     * for replacing the global search provider.
+     * 
+     * The query text field will be set to the value of {@link #SUGGEST_COLUMN_QUERY}.
+     * 
+     * @hide Pending API council approval.
+     */
+    public final static String INTENT_ACTION_CHANGE_SEARCH_SOURCE 
+            = "android.search.action.CHANGE_SEARCH_SOURCE";
+
+    /**
+     * Intent action for finding the global search activity.
+     * The global search provider should handle this intent.
+     * 
+     * @hide Pending API council approval.
+     */
+    public final static String INTENT_ACTION_GLOBAL_SEARCH 
+            = "android.search.action.GLOBAL_SEARCH";
+    
+    /**
+     * Intent action for starting the global search settings activity.
+     * The global search provider should handle this intent.
+     * 
+     * @hide Pending API council approval.
+     */
+    public final static String INTENT_ACTION_SEARCH_SETTINGS 
+            = "android.search.action.SEARCH_SETTINGS";
+    
+    /**
+     * Intent action for starting a web search provider's settings activity.
+     * Web search providers should handle this intent if they have provider-specific
+     * settings to implement.
+     */
+    public final static String INTENT_ACTION_WEB_SEARCH_SETTINGS
+            = "android.search.action.WEB_SEARCH_SETTINGS";
+
+    /**
+     * Intent action broadcasted to inform that the searchables list or default have changed.
+     * Components should handle this intent if they cache any searchable data and wish to stay
+     * up to date on changes.
+     */
+    public final static String INTENT_ACTION_SEARCHABLES_CHANGED
+            = "android.search.action.SEARCHABLES_CHANGED";
+    
+    /**
+     * Intent action broadcasted to inform that the search settings have changed in some way.
+     * Either searchables have been enabled or disabled, or a different web search provider
+     * has been chosen.
+     */
+    public final static String INTENT_ACTION_SEARCH_SETTINGS_CHANGED
+            = "android.search.action.SETTINGS_CHANGED";
+
+    /**
+     * If a suggestion has this value in {@link #SUGGEST_COLUMN_INTENT_ACTION},
+     * the search dialog will take no action.
+     *
+     * @hide
+     */
+    public final static String INTENT_ACTION_NONE = "android.search.action.ZILCH";
+    
+    /**
+     * Reference to the shared system search service.
+     */
+    private static ISearchManager mService;
 
     private final Context mContext;
-    private final Handler mHandler;
+
+    private int mIdent;
     
-    private SearchDialog mSearchDialog;
-    
-    private OnDismissListener mDismissListener = null;
-    private OnCancelListener mCancelListener = null;
+    // package private since they are used by the inner class SearchManagerCallback
+    /* package */ final Handler mHandler;
+    /* package */ OnDismissListener mDismissListener = null;
+    /* package */ OnCancelListener mCancelListener = null;
+
+    private final SearchManagerCallback mSearchManagerCallback = new SearchManagerCallback();
 
     /*package*/ SearchManager(Context context, Handler handler)  {
         mContext = context;
         mHandler = handler;
-    }
-    private static ISearchManager mService;
-
-    static {
         mService = ISearchManager.Stub.asInterface(
-                    ServiceManager.getService(Context.SEARCH_SERVICE));
+                ServiceManager.getService(Context.SEARCH_SERVICE));
+    }
+
+    /*package*/ boolean hasIdent() {
+        return mIdent != 0;
+    }
+    
+    /*package*/ void setIdent(int ident) {
+        if (mIdent != 0) {
+            throw new IllegalStateException("mIdent already set");
+        }
+        mIdent = ident;
     }
     
     /**
@@ -1220,7 +1697,7 @@ public class SearchManager
      * no extra data is required.
      * @param globalSearch If false, this will only launch the search that has been specifically
      * defined by the application (which is usually defined as a local search).  If no default 
-     * search is defined in the current application or activity, no search will be launched.
+     * search is defined in the current application or activity, global search will be launched.
      * If true, this will always launch a platform-global (e.g. web-based) search instead.
      * 
      * @see android.app.Activity#onSearchRequested
@@ -1231,17 +1708,15 @@ public class SearchManager
                             ComponentName launchActivity,
                             Bundle appSearchData,
                             boolean globalSearch) {
-        
-        if (mSearchDialog == null) {
-            mSearchDialog = new SearchDialog(mContext);
+        if (mIdent == 0) throw new IllegalArgumentException(
+                "Called from outside of an Activity context");
+        try {
+            // activate the search manager and start it up!
+            mService.startSearch(initialQuery, selectInitialQuery, launchActivity, appSearchData,
+                    globalSearch, mSearchManagerCallback, mIdent);
+        } catch (RemoteException ex) {
+            Log.e(TAG, "startSearch() failed: " + ex);
         }
-
-        // activate the search manager and start it up!
-        mSearchDialog.show(initialQuery, selectInitialQuery, launchActivity, appSearchData, 
-                globalSearch);
-        
-        mSearchDialog.setOnCancelListener(this);
-        mSearchDialog.setOnDismissListener(this);
     }
 
     /**
@@ -1255,9 +1730,11 @@ public class SearchManager
      *
      * @see #startSearch
      */
-    public void stopSearch()  {
-        if (mSearchDialog != null) {
-            mSearchDialog.cancel();
+    public void stopSearch() {
+        if (DBG) debug("stopSearch()");
+        try {
+            mService.stopSearch();
+        } catch (RemoteException ex) {
         }
     }
 
@@ -1270,33 +1747,38 @@ public class SearchManager
      * 
      * @hide
      */
-    public boolean isVisible()  {
-        if (mSearchDialog != null) {
-            return mSearchDialog.isShowing();
+    public boolean isVisible() {
+        if (DBG) debug("isVisible()");
+        try {
+            return mService.isVisible();
+        } catch (RemoteException e) {
+            Log.e(TAG, "isVisible() failed: " + e);
+            return false;
         }
-        return false;
     }
-    
+
     /**
-     * See {@link #setOnDismissListener} for configuring your activity to monitor search UI state.
+     * See {@link SearchManager#setOnDismissListener} for configuring your activity to monitor
+     * search UI state.
      */
     public interface OnDismissListener {
         /**
-         * This method will be called when the search UI is dismissed. To make use if it, you must
-         * implement this method in your activity, and call {@link #setOnDismissListener} to 
-         * register it.
+         * This method will be called when the search UI is dismissed. To make use of it, you must
+         * implement this method in your activity, and call
+         * {@link SearchManager#setOnDismissListener} to register it.
          */
         public void onDismiss();
     }
     
     /**
-     * See {@link #setOnCancelListener} for configuring your activity to monitor search UI state.
+     * See {@link SearchManager#setOnCancelListener} for configuring your activity to monitor
+     * search UI state.
      */
     public interface OnCancelListener {
         /**
          * This method will be called when the search UI is canceled. To make use if it, you must
-         * implement this method in your activity, and call {@link #setOnCancelListener} to 
-         * register it.
+         * implement this method in your activity, and call
+         * {@link SearchManager#setOnCancelListener} to register it.
          */
         public void onCancel();
     }
@@ -1309,77 +1791,213 @@ public class SearchManager
     public void setOnDismissListener(final OnDismissListener listener) {
         mDismissListener = listener;
     }
-    
-    /**
-     * The callback from the search dialog when dismissed
-     * @hide
-     */
-    public void onDismiss(DialogInterface dialog) {
-        if (dialog == mSearchDialog) {
-            if (mDismissListener != null) {
-                mDismissListener.onDismiss();
-            }
-        }
-    }
 
     /**
      * Set or clear the callback that will be invoked whenever the search UI is canceled.
      * 
      * @param listener The {@link OnCancelListener} to use, or null.
      */
-    public void setOnCancelListener(final OnCancelListener listener) {
+    public void setOnCancelListener(OnCancelListener listener) {
         mCancelListener = listener;
     }
-    
-    
+
+    private class SearchManagerCallback extends ISearchManagerCallback.Stub {
+
+        private final Runnable mFireOnDismiss = new Runnable() {
+            public void run() {
+                if (DBG) debug("mFireOnDismiss");
+                if (mDismissListener != null) {
+                    mDismissListener.onDismiss();
+                }
+            }
+        };
+
+        private final Runnable mFireOnCancel = new Runnable() {
+            public void run() {
+                if (DBG) debug("mFireOnCancel");
+                if (mCancelListener != null) {
+                    mCancelListener.onCancel();
+                }
+            }
+        };
+
+        public void onDismiss() {
+            if (DBG) debug("onDismiss()");
+            mHandler.post(mFireOnDismiss);
+        }
+
+        public void onCancel() {
+            if (DBG) debug("onCancel()");
+            mHandler.post(mFireOnCancel);
+        }
+
+    }
+
     /**
-     * The callback from the search dialog when canceled
-     * @hide
+     * @deprecated This method is an obsolete internal implementation detail. Do not use.
      */
     public void onCancel(DialogInterface dialog) {
-        if (dialog == mSearchDialog) {
-            if (mCancelListener != null) {
-                mCancelListener.onCancel();
-            }
-        }
+        throw new UnsupportedOperationException();
     }
 
     /**
-     * Save instance state so we can recreate after a rotation.
-     * 
-     * @hide
+     * @deprecated This method is an obsolete internal implementation detail. Do not use.
      */
-    void saveSearchDialog(Bundle outState, String key) {
-        if (mSearchDialog != null && mSearchDialog.isShowing()) {
-            Bundle searchDialogState = mSearchDialog.onSaveInstanceState();
-            outState.putBundle(key, searchDialogState);
-        }
+    public void onDismiss(DialogInterface dialog) {
+        throw new UnsupportedOperationException();
     }
 
     /**
-     * Restore instance state after a rotation.
+     * Gets information about a searchable activity. This method is static so that it can
+     * be used from non-Activity contexts.
+     *
+     * @param componentName The activity to get searchable information for.
+     * @param globalSearch If <code>false</code>, return information about the given activity.
+     *        If <code>true</code>, return information about the global search activity. 
+     * @return Searchable information, or <code>null</code> if the activity is not searchable.
      * 
-     * @hide
+     * @hide because SearchableInfo is not part of the API.
      */
-    void restoreSearchDialog(Bundle inState, String key) {        
-        Bundle searchDialogState = inState.getBundle(key);
-        if (searchDialogState != null) {
-            if (mSearchDialog == null) {
-                mSearchDialog = new SearchDialog(mContext);
-            }
-            mSearchDialog.onRestoreInstanceState(searchDialogState);
+    public SearchableInfo getSearchableInfo(ComponentName componentName,
+            boolean globalSearch) {
+        try {
+            return mService.getSearchableInfo(componentName, globalSearch);
+        } catch (RemoteException ex) {
+            Log.e(TAG, "getSearchableInfo() failed: " + ex);
+            return null;
         }
     }
     
     /**
-     * Hook for updating layout on a rotation
+     * Checks whether the given searchable is the default searchable.
      * 
-     * @hide
+     * @hide because SearchableInfo is not part of the API.
      */
-    void onConfigurationChanged(Configuration newConfig) {
-        if (mSearchDialog != null && mSearchDialog.isShowing()) {
-            mSearchDialog.onConfigurationChanged(newConfig);
+    public boolean isDefaultSearchable(SearchableInfo searchable) {
+        SearchableInfo defaultSearchable = getSearchableInfo(null, true);
+        return defaultSearchable != null 
+                && defaultSearchable.getSearchActivity().equals(searchable.getSearchActivity());
+    }
+
+    /**
+     * Gets a cursor with search suggestions.
+     *
+     * @param searchable Information about how to get the suggestions.
+     * @param query The search text entered (so far).
+     * @return a cursor with suggestions, or <code>null</null> the suggestion query failed.
+     *
+     * @hide because SearchableInfo is not part of the API.
+     */
+    public Cursor getSuggestions(SearchableInfo searchable, String query) {
+        if (searchable == null) {
+            return null;
+        }
+
+        String authority = searchable.getSuggestAuthority();
+        if (authority == null) {
+            return null;
+        }
+
+        Uri.Builder uriBuilder = new Uri.Builder()
+                .scheme(ContentResolver.SCHEME_CONTENT)
+                .authority(authority);
+
+        // if content path provided, insert it now
+        final String contentPath = searchable.getSuggestPath();
+        if (contentPath != null) {
+            uriBuilder.appendEncodedPath(contentPath);
+        }
+
+        // append standard suggestion query path 
+        uriBuilder.appendPath(SearchManager.SUGGEST_URI_PATH_QUERY);
+
+        // get the query selection, may be null
+        String selection = searchable.getSuggestSelection();
+        // inject query, either as selection args or inline
+        String[] selArgs = null;
+        if (selection != null) {    // use selection if provided
+            selArgs = new String[] { query };
+        } else {                    // no selection, use REST pattern
+            uriBuilder.appendPath(query);
+        }
+
+        Uri uri = uriBuilder
+                .query("")     // TODO: Remove, workaround for a bug in Uri.writeToParcel()
+                .fragment("")  // TODO: Remove, workaround for a bug in Uri.writeToParcel()
+                .build();
+
+        // finally, make the query
+        return mContext.getContentResolver().query(uri, null, selection, selArgs, null);
+    }
+     
+    /**
+     * Returns a list of the searchable activities that can be included in global search.
+     * 
+     * @return a list containing searchable information for all searchable activities
+     *         that have the <code>exported</code> attribute set in their searchable
+     *         meta-data.
+     * 
+     * @hide because SearchableInfo is not part of the API.
+     */
+    public List<SearchableInfo> getSearchablesInGlobalSearch() {
+        try {
+            return mService.getSearchablesInGlobalSearch();
+        } catch (RemoteException e) {
+            Log.e(TAG, "getSearchablesInGlobalSearch() failed: " + e);
+            return null;
         }
     }
-      
+
+    /**
+     * Returns a list of the searchable activities that handle web searches.
+     *
+     * @return a list of all searchable activities that handle
+     *         {@link android.content.Intent#ACTION_WEB_SEARCH}.
+     *
+     * @hide because SearchableInfo is not part of the API.
+     */
+    public List<SearchableInfo> getSearchablesForWebSearch() {
+        try {
+            return mService.getSearchablesForWebSearch();
+        } catch (RemoteException e) {
+            Log.e(TAG, "getSearchablesForWebSearch() failed: " + e);
+            return null;
+        }
+    }
+
+    /**
+     * Returns the default searchable activity for web searches.
+     *
+     * @return searchable information for the activity handling web searches by default.
+     *
+     * @hide because SearchableInfo is not part of the API.
+     */
+    public SearchableInfo getDefaultSearchableForWebSearch() {
+        try {
+            return mService.getDefaultSearchableForWebSearch();
+        } catch (RemoteException e) {
+            Log.e(TAG, "getDefaultSearchableForWebSearch() failed: " + e);
+            return null;
+        }
+    }
+
+    /**
+     * Sets the default searchable activity for web searches.
+     *
+     * @param component Name of the component to set as default activity for web searches.
+     *
+     * @hide
+     */
+    public void setDefaultWebSearch(ComponentName component) {
+        try {
+            mService.setDefaultWebSearch(component);
+        } catch (RemoteException e) {
+            Log.e(TAG, "setDefaultWebSearch() failed: " + e);
+        }
+    }
+
+    private static void debug(String msg) {
+        Thread thread = Thread.currentThread();
+        Log.d(TAG, msg + " (" + thread.getName() + "-" + thread.getId() + ")");
+    }
 }

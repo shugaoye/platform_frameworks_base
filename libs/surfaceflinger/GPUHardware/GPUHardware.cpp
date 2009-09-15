@@ -574,8 +574,13 @@ void GPUHardware::binderDied(const wp<IBinder>& who)
 
 sp<GPUHardwareInterface> GPUFactory::getGPU()
 {
-    return new GEMHardware();
-    //return new GPUHardware();
+    sp<GPUHardwareInterface> gpu;
+    if (access("/dev/hw3d", F_OK) == 0) {
+        gpu = new GPUHardware();
+    } else {
+        gpu = new GEMHardware();
+    }
+    return gpu;
 }
 
 // ---------------------------------------------------------------------------

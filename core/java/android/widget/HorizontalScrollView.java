@@ -114,6 +114,8 @@ public class HorizontalScrollView extends FrameLayout {
     private boolean mSmoothScrollingEnabled = true;
 
     private int mTouchSlop;
+    private int mMinimumVelocity;
+    private int mMaximumVelocity;
 
     public HorizontalScrollView(Context context) {
         this(context, null);
@@ -179,7 +181,10 @@ public class HorizontalScrollView extends FrameLayout {
         setFocusable(true);
         setDescendantFocusability(FOCUS_AFTER_DESCENDANTS);
         setWillNotDraw(false);
-        mTouchSlop = ViewConfiguration.get(getContext()).getScaledTouchSlop();
+        final ViewConfiguration configuration = ViewConfiguration.get(mContext);
+        mTouchSlop = configuration.getScaledTouchSlop();
+        mMinimumVelocity = configuration.getScaledMinimumFlingVelocity();
+        mMaximumVelocity = configuration.getScaledMaximumFlingVelocity();
     }
 
     @Override
@@ -281,18 +286,20 @@ public class HorizontalScrollView extends FrameLayout {
             return;
         }
 
-        final View child = getChildAt(0);
-        int width = getMeasuredWidth();
-        if (child.getMeasuredHeight() < width) {
-            final FrameLayout.LayoutParams lp = (LayoutParams) child.getLayoutParams();
-
-            int childHeightMeasureSpec = getChildMeasureSpec(heightMeasureSpec, mPaddingTop
-                    + mPaddingBottom, lp.height);
-            width -= mPaddingLeft;
-            width -= mPaddingRight;
-            int childWidthMeasureSpec = MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY);
-
-            child.measure(childWidthMeasureSpec, childHeightMeasureSpec);
+        if (getChildCount() > 0) {
+            final View child = getChildAt(0);
+            int width = getMeasuredWidth();
+            if (child.getMeasuredWidth() < width) {
+                final FrameLayout.LayoutParams lp = (LayoutParams) child.getLayoutParams();
+    
+                int childHeightMeasureSpec = getChildMeasureSpec(heightMeasureSpec, mPaddingTop
+                        + mPaddingBottom, lp.height);
+                width -= mPaddingLeft;
+                width -= mPaddingRight;
+                int childWidthMeasureSpec = MeasureSpec.makeMeasureSpec(width, MeasureSpec.EXACTLY);
+    
+                child.measure(childWidthMeasureSpec, childHeightMeasureSpec);
+            }
         }
     }
 
@@ -477,12 +484,10 @@ public class HorizontalScrollView extends FrameLayout {
                 break;
             case MotionEvent.ACTION_UP:
                 final VelocityTracker velocityTracker = mVelocityTracker;
-                velocityTracker.computeCurrentVelocity(1000);
+                velocityTracker.computeCurrentVelocity(1000, mMaximumVelocity);
                 int initialVelocity = (int) velocityTracker.getXVelocity();
 
-                if ((Math.abs(initialVelocity) >
-                        ViewConfiguration.get(mContext).getScaledMinimumFlingVelocity()) &&
-                        getChildCount() > 0) {
+                if ((Math.abs(initialVelocity) > mMinimumVelocity) && getChildCount() > 0) {
                     fling(-initialVelocity);
                 }
 
@@ -633,7 +638,7 @@ public class HorizontalScrollView extends FrameLayout {
             mTempRect.left = getScrollX() + width;
             int count = getChildCount();
             if (count > 0) {
-                View view = getChildAt(count - 1);
+                View view = getChildAt(0);
                 if (mTempRect.left + width > view.getRight()) {
                     mTempRect.left = view.getRight() - width;
                 }
@@ -671,7 +676,7 @@ public class HorizontalScrollView extends FrameLayout {
         if (right) {
             int count = getChildCount();
             if (count > 0) {
-                View view = getChildAt(count - 1);
+                View view = getChildAt(0);
                 mTempRect.right = view.getRight();
                 mTempRect.left = mTempRect.right - width;
             }
@@ -748,9 +753,9 @@ public class HorizontalScrollView extends FrameLayout {
 
             if (direction == View.FOCUS_LEFT && getScrollX() < scrollDelta) {
                 scrollDelta = getScrollX();
-            } else if (direction == View.FOCUS_RIGHT) {
-
-                int daRight = getChildAt(getChildCount() - 1).getRight();
+            } else if (direction == View.FOCUS_RIGHT && getChildCount() > 0) {
+                
+                int daRight = getChildAt(0).getRight();
 
                 int screenRight = getScrollX() + getWidth();
 
@@ -972,6 +977,7 @@ public class HorizontalScrollView extends FrameLayout {
      * @return The scroll delta.
      */
     protected int computeScrollDeltaToGetChildRectOnScreen(Rect rect) {
+        if (getChildCount() == 0) return 0;
 
         int width = getWidth();
         int screenLeft = getScrollX();
@@ -1005,7 +1011,7 @@ public class HorizontalScrollView extends FrameLayout {
             }
 
             // make sure we aren't scrolling beyond the end of our content
-            int right = getChildAt(getChildCount() - 1).getRight();
+            int right = getChildAt(0).getRight();
             int distanceToRight = right - screenRight;
             scrollXDelta = Math.min(scrollXDelta, distanceToRight);
 
@@ -1145,27 +1151,29 @@ public class HorizontalScrollView extends FrameLayout {
      *                  which means we want to scroll towards the left.
      */
     public void fling(int velocityX) {
-        int width = getWidth() - mPaddingRight - mPaddingLeft;
-        int right = getChildAt(0).getWidth();
-
-        mScroller.fling(mScrollX, mScrollY, velocityX, 0, 0, right - width, 0, 0);
-
-        final boolean movingRight = velocityX > 0;
-
-        View newFocused = findFocusableViewInMyBounds(movingRight,
-                mScroller.getFinalX(), findFocus());
-
-        if (newFocused == null) {
-            newFocused = this;
+        if (getChildCount() > 0) {
+            int width = getWidth() - mPaddingRight - mPaddingLeft;
+            int right = getChildAt(0).getWidth();
+    
+            mScroller.fling(mScrollX, mScrollY, velocityX, 0, 0, right - width, 0, 0);
+    
+            final boolean movingRight = velocityX > 0;
+    
+            View newFocused = findFocusableViewInMyBounds(movingRight,
+                    mScroller.getFinalX(), findFocus());
+    
+            if (newFocused == null) {
+                newFocused = this;
+            }
+    
+            if (newFocused != findFocus()
+                    && newFocused.requestFocus(movingRight ? View.FOCUS_RIGHT : View.FOCUS_LEFT)) {
+                mScrollViewMovedFocus = true;
+                mScrollViewMovedFocus = false;
+            }
+    
+            invalidate();
         }
-
-        if (newFocused != findFocus()
-                && newFocused.requestFocus(movingRight ? View.FOCUS_RIGHT : View.FOCUS_LEFT)) {
-            mScrollViewMovedFocus = true;
-            mScrollViewMovedFocus = false;
-        }
-
-        invalidate();
     }
 
     /**

@@ -32,10 +32,52 @@ public class TelephonyIntents {
      *
      * <p class="note">
      * Requires the READ_PHONE_STATE permission.
+     * 
+     * <p class="note">This is a protected intent that can only be sent
+     * by the system.
      */
     public static final String ACTION_SERVICE_STATE_CHANGED = "android.intent.action.SERVICE_STATE";
 
-
+    /**
+     * <p>Broadcast Action: The radio technology has changed. The intent will have the following
+     * extra values:</p>
+     * <ul>
+     *   <li><em>phoneName</em> - A string version of the new phone name.</li>
+     * </ul>
+     *
+     * <p class="note">
+     * You can <em>not</em> receive this through components declared
+     * in manifests, only by explicitly registering for it with
+     * {@link android.content.Context#registerReceiver(android.content.BroadcastReceiver,
+     * android.content.IntentFilter) Context.registerReceiver()}.
+     *
+     * <p class="note">
+     * Requires no permission.
+     * 
+     * <p class="note">This is a protected intent that can only be sent
+     * by the system.
+     */
+    public static final String ACTION_RADIO_TECHNOLOGY_CHANGED
+            = "android.intent.action.RADIO_TECHNOLOGY";
+    /**
+     * <p>Broadcast Action: The emergency callback mode is changed.
+     * <ul>
+     *   <li><em>phoneinECMState</em> - A boolean value,true=phone in ECM, false=ECM off</li>
+     * </ul>
+     * <p class="note">
+     * You can <em>not</em> receive this through components declared
+     * in manifests, only by explicitly registering for it with
+     * {@link android.content.Context#registerReceiver(android.content.BroadcastReceiver,
+     * android.content.IntentFilter) Context.registerReceiver()}.
+     *
+     * <p class="note">
+     * Requires no permission.
+     * 
+     * <p class="note">This is a protected intent that can only be sent
+     * by the system.
+     */
+    public static final String ACTION_EMERGENCY_CALLBACK_MODE_CHANGED
+            = "android.intent.action.EMERGENCY_CALLBACK_MODE_CHANGED";
     /**
      * Broadcast Action: The phone's signal strength has changed. The intent will have the
      * following extra values:</p>
@@ -47,7 +89,7 @@ public class TelephonyIntents {
      *          <ul><li>0 means "-113 dBm or less".</li><li>31 means "-51 dBm or greater".</li></ul>
      *   </li>
      * </ul>
-     * 
+     *
      * <p class="note">
      * You can <em>not</em> receive this through components declared
      * in manifests, only by exlicitly registering for it with
@@ -56,6 +98,9 @@ public class TelephonyIntents {
      *
      * <p class="note">
      * Requires the READ_PHONE_STATE permission.
+     * 
+     * <p class="note">This is a protected intent that can only be sent
+     * by the system.
      */
     public static final String ACTION_SIGNAL_STRENGTH_CHANGED = "android.intent.action.SIG_STR";
 
@@ -77,6 +122,9 @@ public class TelephonyIntents {
      *
      * <p class="note">
      * Requires the READ_PHONE_STATE permission.
+     * 
+     * <p class="note">This is a protected intent that can only be sent
+     * by the system.
      */
     public static final String ACTION_ANY_DATA_CONNECTION_STATE_CHANGED
             = "android.intent.action.ANY_DATA_STATE";
@@ -94,6 +142,9 @@ public class TelephonyIntents {
      *
      * <p class="note">
      * Requires the READ_PHONE_STATE permission.
+     * 
+     * <p class="note">This is a protected intent that can only be sent
+     * by the system.
      */
     public static final String ACTION_DATA_CONNECTION_FAILED
             = "android.intent.action.DATA_CONNECTION_FAILED";
@@ -115,6 +166,9 @@ public class TelephonyIntents {
      *
      * <p class="note">
      * Requires the READ_PHONE_STATE permission.
+     * 
+     * <p class="note">This is a protected intent that can only be sent
+     * by the system.
      */
     public static final String ACTION_SIM_STATE_CHANGED
             = "android.intent.action.SIM_STATE_CHANGED";
@@ -130,6 +184,9 @@ public class TelephonyIntents {
      *
      * <p class="note">
      * Requires the READ_PHONE_STATE permission.
+     * 
+     * <p class="note">This is a protected intent that can only be sent
+     * by the system.
      */
     public static final String ACTION_NETWORK_SET_TIME = "android.intent.action.NETWORK_SET_TIME";
 
@@ -145,7 +202,46 @@ public class TelephonyIntents {
      *
      * <p class="note">
      * Requires the READ_PHONE_STATE permission.
+     * 
+     * <p class="note">This is a protected intent that can only be sent
+     * by the system.
      */
     public static final String ACTION_NETWORK_SET_TIMEZONE
             = "android.intent.action.NETWORK_SET_TIMEZONE";
+
+    /**
+     * <p>Broadcast Action: It indicates the Emergency callback mode blocks datacall/sms
+     * <p class="note">.
+     * This is to pop up a notice to show user that the phone is in emergency callback mode
+     * and atacalls and outgoing sms are blocked.
+     * 
+     * <p class="note">This is a protected intent that can only be sent
+     * by the system.
+     */
+    public static final String ACTION_SHOW_NOTICE_ECM_BLOCK_OTHERS
+            = "android.intent.action.ACTION_SHOW_NOTICE_ECM_BLOCK_OTHERS";
+
+     /**
+     * Broadcast Action: The MDN changed during the CDMA OTA Process
+     * The intent will have the following extra values:</p>
+     * <ul>
+     *   <li><em>mdn</em> - An Integer of the updated MDN number.</li>
+     * </ul>
+     * 
+     * <p class="note">This is a protected intent that can only be sent
+     * by the system.
+     *
+     * <p class="note">
+     */
+    // TODO(Moto): Generally broadcast intents are for use to allow entities which
+    // may not know about each other to "communicate". This seems quite specific
+    // and maybe using the registrant style would be better.
+
+    // Moto: Since this is used for apps not in the same process of phone, can the
+    // registrant style be used? (Ling Li says: Maybe the "app" can request rather
+    // than save the MDN each time and this intent would not be necessary?)
+    // Moto response: Moto internal discussion is on-going.
+    public static final String ACTION_CDMA_OTA_MDN_CHANGED
+            = "android.intent.action.ACTION_MDN_STATE_CHANGED";
+
 }

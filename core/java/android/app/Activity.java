@@ -16,11 +16,14 @@
 
 package android.app;
 
+import com.android.internal.policy.PolicyManager;
+
 import android.content.ComponentCallbacks;
 import android.content.ComponentName;
 import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IIntentSender;
 import android.content.SharedPreferences;
 import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
@@ -32,11 +35,12 @@ import android.graphics.drawable.Drawable;
 import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Bundle;
-import android.os.RemoteException;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.RemoteException;
 import android.text.Selection;
 import android.text.SpannableStringBuilder;
+import android.text.TextUtils;
 import android.text.method.TextKeyListener;
 import android.util.AttributeSet;
 import android.util.Config;
@@ -58,9 +62,9 @@ import android.view.Window;
 import android.view.WindowManager;
 import android.view.ContextMenu.ContextMenuInfo;
 import android.view.View.OnCreateContextMenuListener;
+import android.view.ViewGroup.LayoutParams;
+import android.view.accessibility.AccessibilityEvent;
 import android.widget.AdapterView;
-
-import com.android.internal.policy.PolicyManager;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -602,16 +606,16 @@ public class Activity extends ContextThemeWrapper
     private static final String SAVED_DIALOG_IDS_KEY = "android:savedDialogIds";
     private static final String SAVED_DIALOGS_TAG = "android:savedDialogs";
     private static final String SAVED_DIALOG_KEY_PREFIX = "android:dialog_";
-    private static final String SAVED_SEARCH_DIALOG_KEY = "android:search_dialog";
 
     private SparseArray<Dialog> mManagedDialogs;
 
     // set by the thread after the constructor and before onCreate(Bundle savedInstanceState) is called.
     private Instrumentation mInstrumentation;
     private IBinder mToken;
+    private int mIdent;
     /*package*/ String mEmbeddedID;
     private Application mApplication;
-    private Intent mIntent;
+    /*package*/ Intent mIntent;
     private ComponentName mComponent;
     /*package*/ ActivityInfo mActivityInfo;
     /*package*/ ActivityThread mMainThread;
@@ -625,6 +629,7 @@ public class Activity extends ContextThemeWrapper
     boolean mStartedActivity;
     /*package*/ int mConfigChangeFlags;
     /*package*/ Configuration mCurrentConfig;
+    private SearchManager mSearchManager;
 
     private Window mWindow;
 
@@ -799,12 +804,6 @@ public class Activity extends ContextThemeWrapper
     final void performRestoreInstanceState(Bundle savedInstanceState) {
         onRestoreInstanceState(savedInstanceState);
         restoreManagedDialogs(savedInstanceState);
-        
-        // Also restore the state of a search dialog (if any)
-        // TODO more generic than just this manager
-        SearchManager searchManager = 
-            (SearchManager) getSystemService(Context.SEARCH_SERVICE);
-        searchManager.restoreSearchDialog(savedInstanceState, SAVED_SEARCH_DIALOG_KEY);
     }
 
     /**
@@ -854,11 +853,24 @@ public class Activity extends ContextThemeWrapper
             final Integer dialogId = ids[i];
             Bundle dialogState = b.getBundle(savedDialogKeyFor(dialogId));
             if (dialogState != null) {
-                final Dialog dialog = onCreateDialog(dialogId);
-                dialog.onRestoreInstanceState(dialogState);
+                // Calling onRestoreInstanceState() below will invoke dispatchOnCreate
+                // so tell createDialog() not to do it, otherwise we get an exception
+                final Dialog dialog = createDialog(dialogId, dialogState);
                 mManagedDialogs.put(dialogId, dialog);
+                onPrepareDialog(dialogId, dialog);
+                dialog.onRestoreInstanceState(dialogState);
             }
         }
+    }
+
+    private Dialog createDialog(Integer dialogId, Bundle state) {
+        final Dialog dialog = onCreateDialog(dialogId);
+        if (dialog == null) {
+            throw new IllegalArgumentException("Activity#onCreateDialog did "
+                    + "not create a dialog for id " + dialogId);
+        }
+        dialog.dispatchOnCreate(state);
+        return dialog;
     }
 
     private String savedDialogKeyFor(int key) {
@@ -1007,12 +1019,6 @@ public class Activity extends ContextThemeWrapper
     final void performSaveInstanceState(Bundle outState) {
         onSaveInstanceState(outState);
         saveManagedDialogs(outState);
-
-        // Also save the state of a search dialog (if any)
-        // TODO more generic than just this manager
-        SearchManager searchManager = 
-            (SearchManager) getSystemService(Context.SEARCH_SERVICE);
-        searchManager.saveSearchDialog(outState, SAVED_SEARCH_DIALOG_KEY);
     }
 
     /**
@@ -1283,12 +1289,6 @@ public class Activity extends ContextThemeWrapper
                 }
             }
         }
-        
-        // also dismiss search dialog if showing
-        // TODO more generic than just this manager
-        SearchManager searchManager = 
-            (SearchManager) getSystemService(Context.SEARCH_SERVICE);
-        searchManager.stopSearch();
 
         // close any cursors we are managing.
         int numCursors = mManagedCursors.size();
@@ -1318,13 +1318,7 @@ public class Activity extends ContextThemeWrapper
      */
     public void onConfigurationChanged(Configuration newConfig) {
         mCalled = true;
-        
-        // also update search dialog if showing
-        // TODO more generic than just this manager
-        SearchManager searchManager = 
-            (SearchManager) getSystemService(Context.SEARCH_SERVICE);
-        searchManager.onConfigurationChanged(newConfig);
-        
+
         if (mWindow != null) {
             // Pass the configuration changed event to the window
             mWindow.onConfigurationChanged(newConfig);
@@ -2013,7 +2007,24 @@ public class Activity extends ContextThemeWrapper
         }
         return onTrackballEvent(ev);
     }
-    
+
+    public boolean dispatchPopulateAccessibilityEvent(AccessibilityEvent event) {
+        event.setClassName(getClass().getName());
+        event.setPackageName(getPackageName());
+
+        LayoutParams params = getWindow().getAttributes();
+        boolean isFullScreen = (params.width == LayoutParams.FILL_PARENT) &&
+            (params.height == LayoutParams.FILL_PARENT);
+        event.setFullScreen(isFullScreen);
+
+        CharSequence title = getTitle();
+        if (!TextUtils.isEmpty(title)) {
+           event.getText().add(title);
+        }
+
+        return true;
+    }
+
     /**
      * Default implementation of
      * {@link android.view.Window.Callback#onCreatePanelView}
@@ -2394,12 +2405,7 @@ public class Activity extends ContextThemeWrapper
         }
         Dialog dialog = mManagedDialogs.get(id);
         if (dialog == null) {
-            dialog = onCreateDialog(id);
-            if (dialog == null) {
-                throw new IllegalArgumentException("Activity#onCreateDialog did "
-                        + "not create a dialog for id " + id);
-            }
-            dialog.dispatchOnCreate(null);
+            dialog = createDialog(id, null);
             mManagedDialogs.put(id, dialog);
         }
         
@@ -2515,7 +2521,7 @@ public class Activity extends ContextThemeWrapper
      * no extra data is required.
      * @param globalSearch If false, this will only launch the search that has been specifically
      * defined by the application (which is usually defined as a local search).  If no default 
-     * search is defined in the current application or activity, no search will be launched.
+     * search is defined in the current application or activity, global search will be launched.
      * If true, this will always launch a platform-global (e.g. web-based) search instead.
      * 
      * @see android.app.SearchManager
@@ -2523,10 +2529,8 @@ public class Activity extends ContextThemeWrapper
      */
     public void startSearch(String initialQuery, boolean selectInitialQuery, 
             Bundle appSearchData, boolean globalSearch) {
-        // activate the search manager and start it up!
-        SearchManager searchManager = (SearchManager)
-                        getSystemService(Context.SEARCH_SERVICE);
-        searchManager.startSearch(initialQuery, selectInitialQuery, getComponentName(),
+        ensureSearchManager();
+        mSearchManager.startSearch(initialQuery, selectInitialQuery, getComponentName(),
                         appSearchData, globalSearch); 
     }
 
@@ -3236,6 +3240,24 @@ public class Activity extends ContextThemeWrapper
         return getSharedPreferences(getLocalClassName(), mode);
     }
     
+    private void ensureSearchManager() {
+        if (mSearchManager != null) {
+            return;
+        }
+        
+        // uses super.getSystemService() since this.getSystemService() looks at the
+        // mSearchManager field.
+        mSearchManager = (SearchManager) super.getSystemService(Context.SEARCH_SERVICE);
+        int ident = mIdent;
+        if (ident == 0) {
+            if (mParent != null) ident = mParent.mIdent;
+            if (ident == 0) {
+                throw new IllegalArgumentException("no ident");
+            }
+        }
+        mSearchManager.setIdent(ident);
+    }
+    
     @Override
     public Object getSystemService(String name) {
         if (getBaseContext() == null) {
@@ -3245,6 +3267,9 @@ public class Activity extends ContextThemeWrapper
 
         if (WINDOW_SERVICE.equals(name)) {
             return mWindowManager;
+        } else if (SEARCH_SERVICE.equals(name)) {
+            ensureSearchManager();
+            return mSearchManager;
         }
         return super.getSystemService(name);
     }
@@ -3443,14 +3468,17 @@ public class Activity extends ContextThemeWrapper
             Application application, Intent intent, ActivityInfo info, CharSequence title, 
             Activity parent, String id, Object lastNonConfigurationInstance,
             Configuration config) {
-        attach(context, aThread, instr, token, application, intent, info, title, parent, id,
+        attach(context, aThread, instr, token, 0, application, intent, info, title, parent, id,
             lastNonConfigurationInstance, null, config);
     }
     
-    final void attach(Context context, ActivityThread aThread, Instrumentation instr, IBinder token,
-        Application application, Intent intent, ActivityInfo info, CharSequence title, 
-        Activity parent, String id, Object lastNonConfigurationInstance,
-        HashMap<String,Object> lastNonConfigurationChildInstances, Configuration config) {
+    final void attach(Context context, ActivityThread aThread,
+            Instrumentation instr, IBinder token, int ident,
+            Application application, Intent intent, ActivityInfo info,
+            CharSequence title, Activity parent, String id,
+            Object lastNonConfigurationInstance,
+            HashMap<String,Object> lastNonConfigurationChildInstances,
+            Configuration config) {
         attachBaseContext(context);
 
         mWindow = PolicyManager.makeNewWindow(this);
@@ -3463,6 +3491,7 @@ public class Activity extends ContextThemeWrapper
         mMainThread = aThread;
         mInstrumentation = instr;
         mToken = token;
+        mIdent = ident;
         mApplication = application;
         mIntent = intent;
         mComponent = intent.getComponent();

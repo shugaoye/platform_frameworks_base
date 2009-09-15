@@ -36,7 +36,6 @@
 #include <private/ui/SurfaceFlingerSynchro.h>
 
 #include "Barrier.h"
-#include "BootAnimation.h"
 #include "CPUGauge.h"
 #include "Layer.h"
 #include "Tokenizer.h"
@@ -348,12 +347,12 @@ private:
                 sp<SurfaceHeapManager>      mSurfaceHeapManager;
                 sp<GPUHardwareInterface>    mGPU;
                 GLuint                      mWormholeTexName;
-                sp<BootAnimation>           mBootAnimation;
                 nsecs_t                     mBootTime;
                 
                 // Can only accessed from the main thread, these members
                 // don't need synchronization
                 Region                      mDirtyRegion;
+                Region                      mDirtyRegionRemovedLayer;
                 Region                      mInvalidRegion;
                 Region                      mWormholeRegion;
                 Client*                     mLastScheduledBroadcast;
@@ -375,7 +374,6 @@ private:
                 int                         mDebugCpu;
                 int                         mDebugFps;
                 int                         mDebugBackground;
-                int                         mDebugNoBootAnimation;
 
                 // these are thread safe
     mutable     Barrier                     mReadyToRunBarrier;

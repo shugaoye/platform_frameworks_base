@@ -7,7 +7,6 @@ LOCAL_SRC_FILES:= \
     DisplayHardware/DisplayHardwareBase.cpp \
     GPUHardware/GEMHardware.cpp \
     GPUHardware/GPUHardware.cpp \
-    BootAnimation.cpp \
     BlurFilter.cpp.arm \
     CPUGauge.cpp \
     Layer.cpp \
@@ -17,7 +16,6 @@ LOCAL_SRC_FILES:= \
     LayerBitmap.cpp \
     LayerDim.cpp \
     LayerOrientationAnim.cpp \
-    LayerOrientationAnimRotate.cpp \
     OrientationAnimation.cpp \
     SurfaceFlinger.cpp \
     Tokenizer.cpp \

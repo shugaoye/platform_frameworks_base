@@ -26,6 +26,7 @@ import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
 import android.os.Handler;
 import android.os.SystemClock;
+import android.util.TypedValue;
 import android.view.MotionEvent;
 
 /**
@@ -116,17 +117,19 @@ class FastScroller {
         mThumbDrawable.setAlpha(ScrollFade.ALPHA_MAX);
     }
     
-    private void useThumbDrawable(Drawable drawable) {
+    private void useThumbDrawable(Context context, Drawable drawable) {
         mThumbDrawable = drawable;
-        mThumbW = 64; //mCurrentThumb.getIntrinsicWidth();
-        mThumbH = 52; //mCurrentThumb.getIntrinsicHeight();
+        mThumbW = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP,
+                64, context.getResources().getDisplayMetrics());
+        mThumbH = (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP,
+                52, context.getResources().getDisplayMetrics());
         mChangedBounds = true;
     }
 
     private void init(Context context) {
         // Get both the scrollbar states drawables
         final Resources res = context.getResources();
-        useThumbDrawable(res.getDrawable(
+        useThumbDrawable(context, res.getDrawable(
                 com.android.internal.R.drawable.scrollbar_handle_accelerated_anim2));
         
         mOverlayDrawable = res.getDrawable(
@@ -134,7 +137,7 @@ class FastScroller {
         
         mScrollCompleted = true;
 
-        getSections();
+        getSectionsFromIndexer();
         
         mOverlayPos = new RectF();
         mScrollFade = new ScrollFade();
@@ -250,7 +253,18 @@ class FastScroller {
         }
     }
 
-    private void getSections() {
+    SectionIndexer getSectionIndexer() {
+        return mSectionIndexer;
+    }
+
+    Object[] getSections() {
+        if (mListAdapter == null && mList != null) {
+            getSectionsFromIndexer();
+        }
+        return mSections;
+    }
+
+    private void getSectionsFromIndexer() {
         Adapter adapter = mList.getAdapter();
         mSectionIndexer = null;
         if (adapter instanceof HeaderViewListAdapter) {
@@ -391,8 +405,7 @@ class FastScroller {
     
     boolean onInterceptTouchEvent(MotionEvent ev) {
         if (mState > STATE_NONE && ev.getAction() == MotionEvent.ACTION_DOWN) {
-            if (ev.getX() > mList.getWidth() - mThumbW && ev.getY() >= mThumbY &&
-                    ev.getY() <= mThumbY + mThumbH) {
+            if (isPointInside(ev.getX(), ev.getY())) {
                 setState(STATE_DRAGGING);
                 return true;
             }
@@ -404,20 +417,20 @@ class FastScroller {
         if (mState == STATE_NONE) {
             return false;
         }
-        if (me.getAction() == MotionEvent.ACTION_DOWN) {
-            if (me.getX() > mList.getWidth() - mThumbW
-                    && me.getY() >= mThumbY 
-                    && me.getY() <= mThumbY + mThumbH) {
-                
+
+        final int action = me.getAction();
+
+        if (action == MotionEvent.ACTION_DOWN) {
+            if (isPointInside(me.getX(), me.getY())) {
                 setState(STATE_DRAGGING);
                 if (mListAdapter == null && mList != null) {
-                    getSections();
+                    getSectionsFromIndexer();
                 }
 
                 cancelFling();
                 return true;
             }
-        } else if (me.getAction() == MotionEvent.ACTION_UP) {
+        } else if (action == MotionEvent.ACTION_UP) {
             if (mState == STATE_DRAGGING) {
                 setState(STATE_VISIBLE);
                 final Handler handler = mHandler;
@@ -425,7 +438,7 @@ class FastScroller {
                 handler.postDelayed(mScrollFade, 1000);
                 return true;
             }
-        } else if (me.getAction() == MotionEvent.ACTION_MOVE) {
+        } else if (action == MotionEvent.ACTION_MOVE) {
             if (mState == STATE_DRAGGING) {
                 final int viewHeight = mList.getHeight();
                 // Jitter
@@ -448,7 +461,11 @@ class FastScroller {
         }
         return false;
     }
-    
+
+    boolean isPointInside(float x, float y) {
+        return x > mList.getWidth() - mThumbW && y >= mThumbY && y <= mThumbY + mThumbH;
+    }
+
     public class ScrollFade implements Runnable {
         
         long mStartTime;

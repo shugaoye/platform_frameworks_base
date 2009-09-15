@@ -17,13 +17,13 @@
 package android.webkit;
 
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Message;
 import android.provider.Checkin;
 
 import java.lang.SecurityException;
-import android.content.pm.PackageManager;
 
 import java.util.Locale;
 
@@ -69,7 +69,24 @@ public class WebSettings {
         }
         int value;
     }
-    
+
+    /**
+     * Enum for specifying the WebView's desired density.
+     * FAR makes 100% looking like in 240dpi
+     * MEDIUM makes 100% looking like in 160dpi
+     * CLOSE makes 100% looking like in 120dpi
+     * @hide Pending API council approval
+     */
+    public enum ZoomDensity {
+        FAR(150),      // 240dpi
+        MEDIUM(100),    // 160dpi
+        CLOSE(75);     // 120dpi
+        ZoomDensity(int size) {
+            value = size;
+        }
+        int value;
+    }
+
     /**
      * Default cache usage pattern  Use with {@link #setCacheMode}.
      */
@@ -105,6 +122,8 @@ public class WebSettings {
         LOW
     }
 
+    // WebView associated with this WebSettings.
+    private WebView mWebView;
     // BrowserFrame used to access the native frame pointer.
     private BrowserFrame mBrowserFrame;
     // Flag to prevent multiple SYNC messages at one time.
@@ -127,7 +146,7 @@ public class WebSettings {
     private String          mSerifFontFamily = "serif";
     private String          mCursiveFontFamily = "cursive";
     private String          mFantasyFontFamily = "fantasy";
-    private String          mDefaultTextEncoding = "Latin-1";
+    private String          mDefaultTextEncoding;
     private String          mUserAgent;
     private boolean         mUseDefaultUserAgent;
     private String          mAcceptLanguage;
@@ -149,6 +168,7 @@ public class WebSettings {
     // Don't need to synchronize the get/set methods as they
     // are basic types, also none of these values are used in
     // native WebCore code.
+    private ZoomDensity     mDefaultZoom = ZoomDensity.MEDIUM;
     private RenderPriority  mRenderPriority = RenderPriority.NORMAL;
     private int             mOverrideCacheMode = LOAD_DEFAULT;
     private boolean         mSaveFormData = true;
@@ -159,6 +179,9 @@ public class WebSettings {
     private boolean         mSupportZoom = true;
     private boolean         mBuiltInZoomControls = false;
     private boolean         mAllowFileAccess = true;
+
+    // The Gears permissions manager. Only in Donut.
+    static GearsPermissionsManager sGearsPermissionsManager;
 
     // Class to handle messages before WebCore is ready.
     private class EventHandler {
@@ -180,6 +203,7 @@ public class WebSettings {
                     switch (msg.what) {
                         case SYNC:
                             synchronized (WebSettings.this) {
+                                checkGearsPermissions();
                                 if (mBrowserFrame.mNativeFrame != 0) {
                                     nativeSync(mBrowserFrame.mNativeFrame);
                                 }
@@ -241,9 +265,12 @@ public class WebSettings {
      * Package constructor to prevent clients from creating a new settings
      * instance.
      */
-    WebSettings(Context context) {   
+    WebSettings(Context context, WebView webview) {
         mEventHandler = new EventHandler();
         mContext = context;
+        mWebView = webview;
+        mDefaultTextEncoding = context.getString(com.android.internal.
+                                                 R.string.default_text_encoding);
 
         if (sLockForLocaleSettings == null) {
             sLockForLocaleSettings = new Object();
@@ -446,6 +473,31 @@ public class WebSettings {
      */
     public synchronized TextSize getTextSize() {
         return mTextSize;
+    }
+
+    /**
+     * Set the default zoom density of the page. This should be called from UI
+     * thread.
+     * @param zoom A ZoomDensity value
+     * @see WebSettings.ZoomDensity
+     * @hide Pending API council approval
+     */
+    public void setDefaultZoom(ZoomDensity zoom) {
+        if (mDefaultZoom != zoom) {
+            mDefaultZoom = zoom;
+            mWebView.updateDefaultZoomDensity(zoom.value);
+        }
+    }
+
+    /**
+     * Get the default zoom density of the page. This should be called from UI
+     * thread.
+     * @return A ZoomDensity value
+     * @see WebSettings.ZoomDensity
+     * @hide Pending API council approval
+     */
+    public ZoomDensity getDefaultZoom() {
+        return mDefaultZoom;
     }
 
     /**
@@ -1101,9 +1153,10 @@ public class WebSettings {
     /*package*/
     synchronized void syncSettingsAndCreateHandler(BrowserFrame frame) {
         mBrowserFrame = frame;
-        if (android.util.Config.DEBUG) {
+        if (WebView.DEBUG) {
             junit.framework.Assert.assertTrue(frame.mNativeFrame != 0);
         }
+        checkGearsPermissions();
         nativeSync(frame.mNativeFrame);
         mSyncPending = false;
         mEventHandler.createHandler();
@@ -1117,6 +1170,23 @@ public class WebSettings {
             return 72;
         }
         return size;
+    }
+
+    private void checkGearsPermissions() {
+        // Did we already check the permissions at startup?
+        if (sGearsPermissionsManager != null) {
+            return;
+        }
+        // Is the pluginsPath sane?
+        String pluginsPath = getPluginsPath();
+        if (pluginsPath == null || pluginsPath.length() == 0) {
+            // We don't yet have a meaningful plugin path, so
+            // we can't do anything about the Gears permissions.
+            return;
+        }
+        sGearsPermissionsManager =
+            new GearsPermissionsManager(mContext, pluginsPath);
+        sGearsPermissionsManager.doCheckAndStartObserver();
     }
 
     /* Post a SYNC message to handle syncing the native settings. */

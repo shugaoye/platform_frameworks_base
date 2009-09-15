@@ -27,6 +27,7 @@
 #include <utils/ZipUtils.h>
 #include <utils/ZipFileRO.h>
 #include <utils/Log.h>
+#include <utils/threads.h>
 
 #include <string.h>
 #include <memory.h>
@@ -40,24 +41,71 @@ using namespace android;
 # define O_BINARY 0
 #endif
 
-static volatile int32_t gCount = 0;
+static Mutex gAssetLock;
+static int32_t gCount = 0;
+static Asset* gHead = NULL;
+static Asset* gTail = NULL;
 
 int32_t Asset::getGlobalCount()
 {
+    AutoMutex _l(gAssetLock);
     return gCount;
+}
+
+String8 Asset::getAssetAllocations()
+{
+    AutoMutex _l(gAssetLock);
+    String8 res;
+    Asset* cur = gHead;
+    while (cur != NULL) {
+        if (cur->isAllocated()) {
+            res.append("    ");
+            res.append(cur->getAssetSource());
+            off_t size = (cur->getLength()+512)/1024;
+            char buf[64];
+            sprintf(buf, ": %dK\n", (int)size);
+            res.append(buf);
+        }
+        cur = cur->mNext;
+    }
+    
+    return res;
 }
 
 Asset::Asset(void)
     : mAccessMode(ACCESS_UNKNOWN)
 {
-    int count = android_atomic_inc(&gCount)+1;
-    //LOGI("Creating Asset %p #%d\n", this, count);
+    AutoMutex _l(gAssetLock);
+    gCount++;
+    mNext = mPrev = NULL;
+    if (gTail == NULL) {
+        gHead = gTail = this;
+  	} else {
+  	    mPrev = gTail;
+  	    gTail->mNext = this;
+  	    gTail = this;
+  	}
+    //LOGI("Creating Asset %p #%d\n", this, gCount);
 }
 
 Asset::~Asset(void)
 {
-    int count = android_atomic_dec(&gCount);
-    //LOGI("Destroying Asset in %p #%d\n", this, count);
+    AutoMutex _l(gAssetLock);
+	gCount--;
+    if (gHead == this) {
+        gHead = mNext;
+    }
+    if (gTail == this) {
+        gTail = mPrev;
+    }
+    if (mNext != NULL) {
+        mNext->mPrev = mPrev;
+    }
+    if (mPrev != NULL) {
+        mPrev->mNext = mNext;
+    }
+    mNext = mPrev = NULL;
+    //LOGI("Destroying Asset in %p #%d\n", this, gCount);
 }
 
 /*
@@ -582,11 +630,14 @@ const void* _FileAsset::ensureAlignment(FileMap* map)
     if ((((size_t)data)&0x3) == 0) {
         // We can return this directly if it is aligned on a word
         // boundary.
+        LOGV("Returning aligned FileAsset %p (%s).", this,
+                getAssetSource());
         return data;
     }
     // If not aligned on a word boundary, then we need to copy it into
     // our own buffer.
-    LOGV("Copying FileAsset %p to buffer size %d to make it aligned.", this, (int)mLength);
+    LOGV("Copying FileAsset %p (%s) to buffer size %d to make it aligned.", this,
+            getAssetSource(), (int)mLength);
     unsigned char* buf = new unsigned char[mLength];
     if (buf == NULL) {
         LOGE("alloc of %ld bytes failed\n", (long) mLength);

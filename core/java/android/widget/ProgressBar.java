@@ -30,6 +30,7 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.LayerDrawable;
 import android.graphics.drawable.ShapeDrawable;
 import android.graphics.drawable.StateListDrawable;
+import android.graphics.drawable.Animatable;
 import android.graphics.drawable.shapes.RoundRectShape;
 import android.graphics.drawable.shapes.Shape;
 import android.util.AttributeSet;
@@ -189,10 +190,12 @@ public class ProgressBar extends View {
 
         mBehavior = a.getInt(R.styleable.ProgressBar_indeterminateBehavior, mBehavior);
 
-        final int resID = a.getResourceId(com.android.internal.R.styleable.ProgressBar_interpolator, -1);
+        final int resID = a.getResourceId(
+                com.android.internal.R.styleable.ProgressBar_interpolator, 
+                android.R.anim.linear_interpolator); // default to linear interpolator
         if (resID > 0) {
             setInterpolator(context, resID);
-        }
+        } 
 
         setMax(a.getInt(R.styleable.ProgressBar_max, mMax));
 
@@ -683,7 +686,7 @@ public class ProgressBar extends View {
             return;
         }
 
-        if (mIndeterminateDrawable instanceof AnimationDrawable) {
+        if (mIndeterminateDrawable instanceof Animatable) {
             mShouldStartAnimationDrawable = true;
             mAnimation = null;
         } else {
@@ -708,8 +711,8 @@ public class ProgressBar extends View {
     void stopAnimation() {
         mAnimation = null;
         mTransformation = null;
-        if (mIndeterminateDrawable instanceof AnimationDrawable) {
-            ((AnimationDrawable) mIndeterminateDrawable).stop();
+        if (mIndeterminateDrawable instanceof Animatable) {
+            ((Animatable) mIndeterminateDrawable).stop();
             mShouldStartAnimationDrawable = false;
         }
     }
@@ -818,8 +821,8 @@ public class ProgressBar extends View {
             }
             d.draw(canvas);
             canvas.restore();
-            if (mShouldStartAnimationDrawable && d instanceof AnimationDrawable) {
-                ((AnimationDrawable) d).start();
+            if (mShouldStartAnimationDrawable && d instanceof Animatable) {
+                ((Animatable) d).start();
                 mShouldStartAnimationDrawable = false;
             }
         }

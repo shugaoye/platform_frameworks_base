@@ -32,6 +32,8 @@ import android.net.Uri;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.View;
+import android.view.accessibility.AccessibilityEvent;
+import android.view.accessibility.AccessibilityManager;
 import android.widget.RemoteViews.RemoteView;
 
 
@@ -315,7 +317,7 @@ public class ImageView extends View {
     public void setImageBitmap(Bitmap bm) {
         // if this is used frequently, may handle bitmaps explicitly
         // to reduce the intermediate drawable object
-        setImageDrawable(new BitmapDrawable(bm));
+        setImageDrawable(new BitmapDrawable(mContext.getResources(), bm));
     }
 
     public void setImageState(int[] state, boolean merge) {
@@ -461,6 +463,7 @@ public class ImageView extends View {
         if (matrix == null && !mMatrix.isIdentity() ||
                 matrix != null && !mMatrix.equals(matrix)) {
             mMatrix.set(matrix);
+            configureBounds();
             invalidate();
         }
     }
@@ -848,7 +851,7 @@ public class ImageView extends View {
     public int getBaseline() {
         return mBaselineAligned ? getMeasuredHeight() : -1;
     }
-    
+
     /**
      * Set a tinting option for the image.
      * 
@@ -878,7 +881,7 @@ public class ImageView extends View {
             invalidate();
         }
     }
-    
+
     public void setAlpha(int alpha) {
         alpha &= 0xFF;          // keep it legal
         if (mAlpha != alpha) {

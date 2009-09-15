@@ -19,7 +19,6 @@ package com.android.server;
 import com.android.server.am.ActivityManagerService;
 import com.android.server.status.StatusBarService;
 
-import dalvik.system.PathClassLoader;
 import dalvik.system.VMRuntime;
 
 import android.app.ActivityManagerNative;
@@ -32,7 +31,6 @@ import android.content.pm.IPackageManager;
 import android.database.ContentObserver;
 import android.database.Cursor;
 import android.media.AudioService;
-import android.os.IBinder;
 import android.os.Looper;
 import android.os.RemoteException;
 import android.os.ServiceManager;
@@ -46,12 +44,10 @@ import android.server.search.SearchManagerService;
 import android.util.EventLog;
 import android.util.Log;
 
-import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
-
 class ServerThread extends Thread {
     private static final String TAG = "SystemServer";
     private final static boolean INCLUDE_DEMO = false;
+    private final static boolean INCLUDE_BACKUP = false;
 
     private static final int LOG_BOOT_PROGRESS_SYSTEM_RUN = 3010;
 
@@ -97,6 +93,9 @@ class ServerThread extends Thread {
 
         // Critical services...
         try {
+            Log.i(TAG, "Starting Entropy Service.");
+            ServiceManager.addService("entropy", new EntropyService());
+
             Log.i(TAG, "Starting Power Manager.");
             power = new PowerManagerService();
             ServiceManager.addService(Context.POWER_SERVICE, power);
@@ -187,6 +186,7 @@ class ServerThread extends Thread {
         StatusBarService statusBar = null;
         InputMethodManagerService imm = null;
         AppWidgetService appWidget = null;
+        NotificationManagerService notification = null;
 
         if (factoryTest != SystemServer.FACTORY_TEST_LOW_LEVEL) {
             try {
@@ -228,9 +228,17 @@ class ServerThread extends Thread {
             }
 
             try {
+              Log.i(TAG, "Starting Accessibility Manager.");
+              ServiceManager.addService(Context.ACCESSIBILITY_SERVICE,
+                      new AccessibilityManagerService(context));
+            } catch (Throwable e) {
+              Log.e(TAG, "Failure starting Accessibility Manager", e);
+            }
+
+            try {
                 Log.i(TAG, "Starting Notification Manager.");
-                ServiceManager.addService(Context.NOTIFICATION_SERVICE,
-                        new NotificationManagerService(context, statusBar, hardware));
+                notification = new NotificationManagerService(context, statusBar, hardware);
+                ServiceManager.addService(Context.NOTIFICATION_SERVICE, notification);
             } catch (Throwable e) {
                 Log.e(TAG, "Failure starting Notification Manager", e);
             }
@@ -306,6 +314,15 @@ class ServerThread extends Thread {
             }
 
             try {
+                if (INCLUDE_BACKUP) {
+                    Log.i(TAG, "Starting Backup Service");
+                    ServiceManager.addService(Context.BACKUP_SERVICE, new BackupManagerService(context));
+                }
+            } catch (Throwable e) {
+                Log.e(TAG, "Failure starting Backup Service", e);
+            }
+
+            try {
                 Log.i(TAG, "Starting AppWidget Service");
                 appWidget = new AppWidgetService(context);
                 ServiceManager.addService(Context.APPWIDGET_SERVICE, appWidget);
@@ -330,6 +347,11 @@ class ServerThread extends Thread {
 
         // It is now time to start up the app processes...
         boolean safeMode = wm.detectSafeMode();
+
+        if (notification != null) {
+            notification.systemReady();
+        }
+
         if (statusBar != null) {
             statusBar.systemReady();
         }

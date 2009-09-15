@@ -40,7 +40,7 @@ interface IWifiManager
 
     boolean pingSupplicant();
 
-    boolean startScan();
+    boolean startScan(boolean forceActive);
 
     List<ScanResult> getScanResults();
 
@@ -69,5 +69,11 @@ interface IWifiManager
     boolean acquireWifiLock(IBinder lock, int lockType, String tag);
 
     boolean releaseWifiLock(IBinder lock);
+
+    boolean isMulticastEnabled();
+
+    void acquireMulticastLock(IBinder binder, String tag);
+
+    void releaseMulticastLock();
 }
 

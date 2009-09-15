@@ -291,6 +291,15 @@ public class ZygoteInit {
                         } else {
                             missingClasses += " " + line;
                         }
+                    } catch (Throwable t) {
+                        Log.e(TAG, "Error preloading " + line + ".", t);
+                        if (t instanceof Error) {
+                            throw (Error) t;
+                        }
+                        if (t instanceof RuntimeException) {
+                            throw (RuntimeException) t;
+                        }
+                        throw new RuntimeException(t);
                     }
                 }
 
@@ -467,7 +476,7 @@ public class ZygoteInit {
             "--setuid=1000",
             "--setgid=1000",
             "--setgroups=1001,1002,1003,1004,1005,1006,1007,1008,1009,1010,3001,3002,3003",
-            "--capabilities=123812896,123812896",
+            "--capabilities=132201504,132201504",
             "--runtime-init",
             "--nice-name=system_server",
             "com.android.server.SystemServer",

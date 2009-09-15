@@ -18,18 +18,18 @@ package android.graphics;
 
 import android.content.res.AssetManager;
 import android.content.res.Resources;
-import android.util.TypedValue;
 import android.util.DisplayMetrics;
+import android.util.TypedValue;
 
 import java.io.BufferedInputStream;
-import java.io.FileInputStream;
-import java.io.InputStream;
-import java.io.IOException;
 import java.io.FileDescriptor;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 
 /**
- * Creates Bitmap objects from various sources, including files, streams, 
- * and byte-arrays. 
+ * Creates Bitmap objects from various sources, including files, streams,
+ * and byte-arrays.
  */
 public class BitmapFactory {
     public static class Options {
@@ -39,7 +39,6 @@ public class BitmapFactory {
          */
         public Options() {
             inDither = true;
-            inDensity = 0;
             inScaled = true;
         }
 
@@ -62,7 +61,7 @@ public class BitmapFactory {
          * Also, powers of 2 are often faster/easier for the decoder to honor.
          */
         public int inSampleSize;
-        
+
         /**
          * If this is non-null, the decoder will try to decode into this
          * internal configuration. If it is null, or the request cannot be met,
@@ -71,7 +70,7 @@ public class BitmapFactory {
          * as if it has per-pixel alpha (requiring a config that also does).
          */
         public Bitmap.Config inPreferredConfig;
-        
+
         /**
          * If dither is true, the decoder will atttempt to dither the decoded
          * image.
@@ -79,28 +78,128 @@ public class BitmapFactory {
         public boolean inDither;
 
         /**
-         * The desired pixel density of the bitmap.
+         * The pixel density to use for the bitmap.  This will always result
+         * in the returned bitmap having a density set for it (see
+         * {@link Bitmap#setDensity(int) Bitmap.setDensity(int)).  In addition,
+         * if {@link #inScaled} is set (which it is by default} and this
+         * density does not match {@link #inTargetDensity}, then the bitmap
+         * will be scaled to the target density before being returned.
+         * 
+         * <p>If this is 0,
+         * {@link BitmapFactory#decodeResource(Resources, int)}, 
+         * {@link BitmapFactory#decodeResource(Resources, int, android.graphics.BitmapFactory.Options)},
+         * and {@link BitmapFactory#decodeResourceStream}
+         * will fill in the density associated with the resource.  The other
+         * functions will leave it as-is and no density will be applied.
          *
-         * @see android.util.DisplayMetrics#DEFAULT_DENSITY
-         * @see android.util.DisplayMetrics#density
-         *
-         * @hide pending API council approval
+         * @see #inTargetDensity
+         * @see #inScreenDensity
+         * @see #inScaled
+         * @see Bitmap#setDensity(int)
+         * @see android.util.DisplayMetrics#densityDpi
          */
         public int inDensity;
 
         /**
-         * </p>If the bitmap is loaded from {@link android.content.res.Resources} and
-         * this flag is turned on, the bitmap will be scaled to match the default
-         * display's pixel density.</p>
+         * The pixel density of the destination this bitmap will be drawn to.
+         * This is used in conjunction with {@link #inDensity} and
+         * {@link #inScaled} to determine if and how to scale the bitmap before
+         * returning it.
+         * 
+         * <p>If this is 0,
+         * {@link BitmapFactory#decodeResource(Resources, int)}, 
+         * {@link BitmapFactory#decodeResource(Resources, int, android.graphics.BitmapFactory.Options)},
+         * and {@link BitmapFactory#decodeResourceStream}
+         * will fill in the density associated the Resources object's
+         * DisplayMetrics.  The other
+         * functions will leave it as-is and no scaling for density will be
+         * performed.
+         * 
+         * @see #inDensity
+         * @see #inScreenDensity
+         * @see #inScaled
+         * @see android.util.DisplayMetrics#densityDpi
+         */
+        public int inTargetDensity;
+        
+        /**
+         * The pixel density of the actual screen that is being used.  This is
+         * purely for applications running in density compatibility code, where
+         * {@link #inTargetDensity} is actually the density the application
+         * sees rather than the real screen density.
+         * 
+         * <p>By setting this, you
+         * allow the loading code to avoid scaling a bitmap that is currently
+         * in the screen density up/down to the compatibility density.  Instead,
+         * if {@link #inDensity} is the same as {@link #inScreenDensity}, the
+         * bitmap will be left as-is.  Anything using the resulting bitmap
+         * must also used {@link Bitmap#getScaledWidth(int)
+         * Bitmap.getScaledWidth} and {@link Bitmap#getScaledHeight
+         * Bitmap.getScaledHeight} to account for any different between the
+         * bitmap's density and the target's density.
+         * 
+         * <p>This is never set automatically for the caller by
+         * {@link BitmapFactory} itself.  It must be explicitly set, since the
+         * caller must deal with the resulting bitmap in a density-aware way.
+         * 
+         * @see #inDensity
+         * @see #inTargetDensity
+         * @see #inScaled
+         * @see android.util.DisplayMetrics#densityDpi
+         */
+        public int inScreenDensity;
+        
+        /**
+         * When this flag is set, if {@link #inDensity} and
+         * {@link #inTargetDensity} are not 0, the
+         * bitmap will be scaled to match {@link #inTargetDensity} when loaded,
+         * rather than relying on the graphics system scaling it each time it
+         * is drawn to a Canvas.
          *
-         * </p>This flag is turned on by default and should be turned off if you need
-         * a non-scaled version of the bitmap. In this case,
-         * {@link android.graphics.Bitmap#setAutoScalingEnabled(boolean)} can be used
-         * to properly scale the bitmap at drawing time.</p>
+         * <p>This flag is turned on by default and should be turned off if you need
+         * a non-scaled version of the bitmap.  Nine-patch bitmaps ignore this
+         * flag and are always scaled.
+         */
+        public boolean inScaled;
+
+        /**
+         * If this is set to true, then the resulting bitmap will allocate its
+         * pixels such that they can be purged if the system needs to reclaim
+         * memory. In that instance, when the pixels need to be accessed again
+         * (e.g. the bitmap is drawn, getPixels() is called), they will be
+         * automatically re-decoded.
+         *
+         * For the re-decode to happen, the bitmap must have access to the
+         * encoded data, either by sharing a reference to the input
+         * or by making a copy of it. This distinction is controlled by
+         * inInputShareable. If this is true, then the bitmap may keep a shallow
+         * reference to the input. If this is false, then the bitmap will
+         * explicitly make a copy of the input data, and keep that. Even if
+         * sharing is allowed, the implementation may still decide to make a
+         * deep copy of the input data.
+         */
+        public boolean inPurgeable;
+
+        /**
+         * This field works in conjuction with inPurgeable. If inPurgeable is
+         * false, then this field is ignored. If inPurgeable is true, then this
+         * field determines whether the bitmap can share a reference to the
+         * input data (inputstream, array, etc.) or if it must make a deep copy.
+         */
+        public boolean inInputShareable;
+
+        /**
+         * Normally bitmap allocations count against the dalvik heap, which
+         * means they help trigger GCs when a lot have been allocated. However,
+         * in rare cases, the caller may want to allocate the bitmap outside of
+         * that heap. To request that, set inNativeAlloc to true. In these
+         * rare instances, it is solely up to the caller to ensure that OOM is
+         * managed explicitly by calling bitmap.recycle() as soon as such a
+         * bitmap is no longer needed.
          *
          * @hide pending API council approval
          */
-        public boolean inScaled;
+        public boolean inNativeAlloc;
 
         /**
          * The resulting width of the bitmap, set independent of the state of
@@ -121,12 +220,12 @@ public class BitmapFactory {
          * If not know, or there is an error, it is set to null.
          */
         public String outMimeType;
-        
+
         /**
          * Temp storage to use for decoding.  Suggest 16K or so.
          */
         public byte[] inTempStorage;
-        
+
         private native void requestCancel();
 
         /**
@@ -137,7 +236,7 @@ public class BitmapFactory {
          * if the operation is canceled.
          */
         public boolean mCancel;
-        
+
         /**
          *  This can be called from another thread while this options object is
          *  inside a decode... call. Calling this will notify the decoder that
@@ -199,57 +298,33 @@ public class BitmapFactory {
     /**
      * Decode a new Bitmap from an InputStream. This InputStream was obtained from
      * resources, which we pass to be able to scale the bitmap accordingly.
-     *
-     * @hide
      */
-    public static Bitmap decodeStream(Resources res, TypedValue value, InputStream is,
-            Rect pad, Options opts) {
+    public static Bitmap decodeResourceStream(Resources res, TypedValue value,
+            InputStream is, Rect pad, Options opts) {
 
         if (opts == null) {
             opts = new Options();
         }
 
-        Bitmap bm = decodeStream(is, pad, opts);
-
-        if (bm != null && res != null && value != null) {
-            byte[] np = bm.getNinePatchChunk();
-            final boolean isNinePatch = np != null && NinePatch.isNinePatchChunk(np);
-
+        if (opts.inDensity == 0 && value != null) {
             final int density = value.density;
-            if (opts.inDensity == 0) {
-                opts.inDensity = density == TypedValue.DENSITY_DEFAULT ?
-                        DisplayMetrics.DEFAULT_DENSITY : density;
-            }            
-            float scale = opts.inDensity / (float) DisplayMetrics.DEFAULT_DENSITY;
-
-            if (opts.inScaled || isNinePatch) {
-                bm.setDensityScale(1.0f);
-                bm.setAutoScalingEnabled(false);
-                // Assume we are going to prescale for the screen
-                scale = res.getDisplayMetrics().density / scale;
-                if (scale != 1.0f) {
-                    // TODO: This is very inefficient and should be done in native by Skia
-                    final Bitmap oldBitmap = bm;
-                    bm = Bitmap.createScaledBitmap(oldBitmap, (int) (bm.getWidth() * scale + 0.5f),
-                            (int) (bm.getHeight() * scale + 0.5f), true);
-                    oldBitmap.recycle();
-
-                    if (isNinePatch) {
-                        np = nativeScaleNinePatch(np, scale, pad);
-                        bm.setNinePatchChunk(np);
-                    }
-                }
-            } else {
-                bm.setDensityScale(scale);
-                bm.setAutoScalingEnabled(true);
+            if (density == TypedValue.DENSITY_DEFAULT) {
+                opts.inDensity = DisplayMetrics.DENSITY_DEFAULT;
+            } else if (density != TypedValue.DENSITY_NONE) {
+                opts.inDensity = density;
             }
         }
-
-        return bm;
+        
+        if (opts.inTargetDensity == 0 && res != null) {
+            opts.inTargetDensity = res.getDisplayMetrics().densityDpi;
+        }
+        
+        return decodeStream(is, pad, opts);
     }
 
     /**
-     * Decode an image referenced by a resource ID.
+     * Synonym for opening the given resource and calling
+     * {@link #decodeResourceStream}.
      *
      * @param res   The resources object containing the image data
      * @param id The resource id of the image data
@@ -261,12 +336,12 @@ public class BitmapFactory {
      */
     public static Bitmap decodeResource(Resources res, int id, Options opts) {
         Bitmap bm = null;
-        
+
         try {
             final TypedValue value = new TypedValue();
             final InputStream is = res.openRawResource(id, value);
 
-            bm = decodeStream(res, value, is, null, opts);
+            bm = decodeResourceStream(res, value, is, null, opts);
             is.close();
         } catch (java.io.IOException e) {
             /*  do nothing.
@@ -276,9 +351,10 @@ public class BitmapFactory {
         }
         return bm;
     }
-    
+
     /**
-     * Decode an image referenced by a resource ID.
+     * Synonym for {@link #decodeResource(Resources, int, android.graphics.BitmapFactory.Options)}
+     * will null Options.
      *
      * @param res The resources object containing the image data
      * @param id The resource id of the image data
@@ -307,7 +383,7 @@ public class BitmapFactory {
         }
         return nativeDecodeByteArray(data, offset, length, opts);
     }
-    
+
     /**
      * Decode an immutable bitmap from the specified byte array.
      *
@@ -320,13 +396,13 @@ public class BitmapFactory {
     public static Bitmap decodeByteArray(byte[] data, int offset, int length) {
         return decodeByteArray(data, offset, length, null);
     }
-    
+
     /**
      * Decode an input stream into a bitmap. If the input stream is null, or
      * cannot be used to decode a bitmap, the function returns null.
      * The stream's position will be where ever it was after the encoded data
      * was read.
-     * 
+     *
      * @param is The input stream that holds the raw data to be decoded into a
      *           bitmap.
      * @param outPadding If not null, return the padding rect for the bitmap if
@@ -345,7 +421,7 @@ public class BitmapFactory {
         if (is == null) {
             return null;
         }
-        
+
         // we need mark/reset to work properly
 
         if (!is.markSupported()) {
@@ -375,6 +451,39 @@ public class BitmapFactory {
             bm = nativeDecodeStream(is, tempStorage, outPadding, opts);
         }
 
+        if (bm == null || opts == null) {
+            return bm;
+        }
+        
+        final int density = opts.inDensity;
+        if (density == 0) {
+            return bm;
+        }
+        
+        bm.setDensity(density);
+        final int targetDensity = opts.inTargetDensity;
+        if (targetDensity == 0 || density == targetDensity
+                || density == opts.inScreenDensity) {
+            return bm;
+        }
+        
+        byte[] np = bm.getNinePatchChunk();
+        final boolean isNinePatch = np != null && NinePatch.isNinePatchChunk(np);
+        if (opts.inScaled || isNinePatch) {
+            float scale = targetDensity / (float)density;
+            // TODO: This is very inefficient and should be done in native by Skia
+            final Bitmap oldBitmap = bm;
+            bm = Bitmap.createScaledBitmap(oldBitmap, (int) (bm.getWidth() * scale + 0.5f),
+                    (int) (bm.getHeight() * scale + 0.5f), true);
+            oldBitmap.recycle();
+
+            if (isNinePatch) {
+                np = nativeScaleNinePatch(np, scale, outPadding);
+                bm.setNinePatchChunk(np);
+            }
+            bm.setDensity(targetDensity);
+        }
+        
         return bm;
     }
 
@@ -383,7 +492,7 @@ public class BitmapFactory {
      * cannot be used to decode a bitmap, the function returns null.
      * The stream's position will be where ever it was after the encoded data
      * was read.
-     * 
+     *
      * @param is The input stream that holds the raw data to be decoded into a
      *           bitmap.
      * @return The decoded bitmap, or null if the image data could not be
@@ -411,7 +520,7 @@ public class BitmapFactory {
     public static Bitmap decodeFileDescriptor(FileDescriptor fd, Rect outPadding, Options opts) {
         return nativeDecodeFileDescriptor(fd, outPadding, opts);
     }
-    
+
     /**
      * Decode a bitmap from the file descriptor. If the bitmap cannot be decoded
      * return null. The position within the descriptor will not be changed when
@@ -423,7 +532,7 @@ public class BitmapFactory {
     public static Bitmap decodeFileDescriptor(FileDescriptor fd) {
         return nativeDecodeFileDescriptor(fd, null, null);
     }
-    
+
     private static native Bitmap nativeDecodeStream(InputStream is, byte[] storage,
             Rect padding, Options opts);
     private static native Bitmap nativeDecodeFileDescriptor(FileDescriptor fd,

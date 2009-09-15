@@ -18,6 +18,7 @@ package android.widget;
 
 import com.android.internal.R;
 import android.content.Context;
+import android.content.res.Resources;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.pm.PackageParser;
@@ -124,25 +125,25 @@ public class AppSecurityPermissions  implements View.OnClickListener {
         if(pkg == null) {
             return;
         }
-        // Extract shared user permissions if any
+        // Get requested permissions
+        if (pkg.requestedPermissions != null) {
+            ArrayList<String> strList = pkg.requestedPermissions;
+            int size = strList.size();
+            if (size > 0) {
+                extractPerms(strList.toArray(new String[size]), permSet);
+            }
+        }
+        // Get permissions related to  shared user if any
         if(pkg.mSharedUserId != null) {
             int sharedUid;
             try {
                 sharedUid = mPm.getUidForSharedUser(pkg.mSharedUserId);
+                getAllUsedPermissions(sharedUid, permSet);
             } catch (NameNotFoundException e) {
                 Log.w(TAG, "Could'nt retrieve shared user id for:"+pkg.packageName);
-                return;
             }
-            getAllUsedPermissions(sharedUid, permSet);
-        } else {
-            ArrayList<String> strList = pkg.requestedPermissions;
-            int size;
-            if((strList == null) || ((size = strList.size()) == 0)) {
-                return;
-            }
-            // Extract permissions defined in current package
-            extractPerms(strList.toArray(new String[size]), permSet);
         }
+        // Retrieve list of permissions
         for(PermissionInfo tmpInfo : permSet) {
             mPermsList.add(tmpInfo);
         }
@@ -176,14 +177,9 @@ public class AppSecurityPermissions  implements View.OnClickListener {
             Log.w(TAG, "Could'nt retrieve permissions for package:"+packageName);
             return;
         }
-        if(pkgInfo == null) {
-            return;
+        if ((pkgInfo != null) && (pkgInfo.requestedPermissions != null)) {
+            extractPerms(pkgInfo.requestedPermissions, permSet);
         }
-        String strList[] = pkgInfo.requestedPermissions;
-        if(strList == null) {
-            return;
-        }
-        extractPerms(strList, permSet);
     }
     
     private void extractPerms(String strList[], Set<PermissionInfo> permSet) {
@@ -324,15 +320,14 @@ public class AppSecurityPermissions  implements View.OnClickListener {
             boolean dangerous) {
         View permView = mInflater.inflate(R.layout.app_permission_item, null);
         Drawable icon = dangerous ? mDangerousIcon : mNormalIcon;
-        int grpColor = dangerous ? R.color.perms_dangerous_grp_color :
-            R.color.perms_normal_grp_color;
-        int permColor = dangerous ? R.color.perms_dangerous_perm_color :
-            R.color.perms_normal_perm_color;
 
         TextView permGrpView = (TextView) permView.findViewById(R.id.permission_group);
         TextView permDescView = (TextView) permView.findViewById(R.id.permission_list);
-        permGrpView.setTextColor(mContext.getResources().getColor(grpColor));
-        permDescView.setTextColor(mContext.getResources().getColor(permColor));
+        if (dangerous) {
+            final Resources resources = mContext.getResources();
+            permGrpView.setTextColor(resources.getColor(R.color.perms_dangerous_grp_color));
+            permDescView.setTextColor(resources.getColor(R.color.perms_dangerous_perm_color));
+        }
 
         ImageView imgView = (ImageView)permView.findViewById(R.id.perm_icon);
         imgView.setImageDrawable(icon);

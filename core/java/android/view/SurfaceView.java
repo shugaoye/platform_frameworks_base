@@ -17,6 +17,8 @@
 package android.view;
 
 import android.content.Context;
+import android.content.res.Resources;
+import android.content.res.CompatibilityInfo.Translator;
 import android.graphics.Canvas;
 import android.graphics.PixelFormat;
 import android.graphics.PorterDuff;
@@ -101,6 +103,8 @@ public class SurfaceView extends View {
     static final int KEEP_SCREEN_ON_MSG = 1;
     static final int GET_NEW_SURFACE_MSG = 2;
     
+    int mWindowType = WindowManager.LayoutParams.TYPE_APPLICATION_MEDIA;
+    
     boolean mIsCreating = false;
 
     final Handler mHandler = new Handler() {
@@ -136,7 +140,8 @@ public class SurfaceView extends View {
     int mFormat = -1;
     int mType = -1;
     final Rect mSurfaceFrame = new Rect();
-
+    private Translator mTranslator;
+    
     public SurfaceView(Context context) {
         super(context);
         setWillNotDraw(true);
@@ -261,16 +266,32 @@ public class SurfaceView extends View {
         super.dispatchDraw(canvas);
     }
 
+    /**
+     * Hack to allow special layering of windows.  The type is one of the
+     * types in WindowManager.LayoutParams.  This is a hack so:
+     * @hide
+     */
+    public void setWindowType(int type) {
+        mWindowType = type;
+    }
+
     private void updateWindow(boolean force) {
         if (!mHaveFrame) {
             return;
+        }
+        ViewRoot viewRoot = (ViewRoot) getRootView().getParent();
+        mTranslator = viewRoot.mTranslator;
+
+        Resources res = getContext().getResources();
+        if (mTranslator != null || !res.getCompatibilityInfo().supportsScreen()) {
+            mSurface.setCompatibleDisplayMetrics(res.getDisplayMetrics(), mTranslator);
         }
         
         int myWidth = mRequestedWidth;
         if (myWidth <= 0) myWidth = getWidth();
         int myHeight = mRequestedHeight;
         if (myHeight <= 0) myHeight = getHeight();
-        
+
         getLocationInWindow(mLocation);
         final boolean creating = mWindow == null;
         final boolean formatChanged = mFormat != mRequestedFormat;
@@ -286,7 +307,7 @@ public class SurfaceView extends View {
                     + " visible=" + visibleChanged
                     + " left=" + (mLeft != mLocation[0])
                     + " top=" + (mTop != mLocation[1]));
-            
+
             try {
                 final boolean visible = mVisible = mRequestedVisible;
                 mLeft = mLocation[0];
@@ -296,22 +317,32 @@ public class SurfaceView extends View {
                 mFormat = mRequestedFormat;
                 mType = mRequestedType;
 
+                // Scaling/Translate window's layout here because mLayout is not used elsewhere.
+                
+                // Places the window relative
                 mLayout.x = mLeft;
                 mLayout.y = mTop;
                 mLayout.width = getWidth();
                 mLayout.height = getHeight();
+                if (mTranslator != null) {
+                    mTranslator.translateLayoutParamsInAppWindowToScreen(mLayout);
+                }
+                
                 mLayout.format = mRequestedFormat;
                 mLayout.flags |=WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
                               | WindowManager.LayoutParams.FLAG_SCALED
                               | WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                               | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                               ;
+                if (!getContext().getResources().getCompatibilityInfo().supportsScreen()) {
+                    mLayout.flags |= WindowManager.LayoutParams.FLAG_COMPATIBLE_WINDOW;
+                }
 
                 mLayout.memoryType = mRequestedType;
 
                 if (mWindow == null) {
                     mWindow = new MyWindow(this);
-                    mLayout.type = WindowManager.LayoutParams.TYPE_APPLICATION_MEDIA;
+                    mLayout.type = mWindowType;
                     mLayout.gravity = Gravity.LEFT|Gravity.TOP;
                     mSession.add(mWindow, mLayout,
                             mVisible ? VISIBLE : GONE, mContentInsets);
@@ -325,16 +356,25 @@ public class SurfaceView extends View {
                 
                 mSurfaceLock.lock();
                 mDrawingStopped = !visible;
+
                 final int relayoutResult = mSession.relayout(
-                        mWindow, mLayout, mWidth, mHeight,
+                    mWindow, mLayout, mWidth, mHeight,
                         visible ? VISIBLE : GONE, false, mWinFrame, mContentInsets,
                         mVisibleInsets, mSurface);
+
                 if (localLOGV) Log.i(TAG, "New surface: " + mSurface
                         + ", vis=" + visible + ", frame=" + mWinFrame);
+                
                 mSurfaceFrame.left = 0;
                 mSurfaceFrame.top = 0;
-                mSurfaceFrame.right = mWinFrame.width();
-                mSurfaceFrame.bottom = mWinFrame.height();
+                if (mTranslator == null) {
+                    mSurfaceFrame.right = mWinFrame.width();
+                    mSurfaceFrame.bottom = mWinFrame.height();
+                } else {
+                    float appInvertedScale = mTranslator.applicationInvertedScale;
+                    mSurfaceFrame.right = (int) (mWinFrame.width() * appInvertedScale + 0.5f);
+                    mSurfaceFrame.bottom = (int) (mWinFrame.height() * appInvertedScale + 0.5f);
+                }
                 mSurfaceLock.unlock();
 
                 try {
@@ -345,7 +385,7 @@ public class SurfaceView extends View {
                         synchronized (mCallbacks) {
                             callbacks = new SurfaceHolder.Callback[mCallbacks.size()];
                             mCallbacks.toArray(callbacks);
-                        }            
+                        }
 
                         if (visibleChanged) {
                             mIsCreating = true;
@@ -396,7 +436,7 @@ public class SurfaceView extends View {
     }
 
     private static class MyWindow extends IWindow.Stub {
-        private WeakReference<SurfaceView> mSurfaceView;
+        private final WeakReference<SurfaceView> mSurfaceView;
 
         public MyWindow(SurfaceView surfaceView) {
             mSurfaceView = new WeakReference<SurfaceView>(surfaceView);
@@ -483,6 +523,7 @@ public class SurfaceView extends View {
     private SurfaceHolder mSurfaceHolder = new SurfaceHolder() {
         
         private static final String LOG_TAG = "SurfaceHolder";
+        private int mSaveCount;
         
         public boolean isCreating() {
             return mIsCreating;
@@ -612,4 +653,3 @@ public class SurfaceView extends View {
         }
     };
 }
-

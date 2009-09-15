@@ -43,23 +43,27 @@ SoundPool::SoundPool(jobject soundPoolRef, int maxChannels, int streamType, int 
     LOGV("SoundPool constructor: maxChannels=%d, streamType=%d, srcQuality=%d",
             maxChannels, streamType, srcQuality);
 
-    if (maxChannels > 32) {
-        LOGW("App requested %d channels, capped at 32", maxChannels);
-        maxChannels = 32;
+    // check limits
+    mMaxChannels = maxChannels;
+    if (mMaxChannels < 1) {
+        mMaxChannels = 1;
     }
+    else if (mMaxChannels > 32) {
+        mMaxChannels = 32;
+    }
+    LOGW_IF(maxChannels != mMaxChannels, "App requested %d channels", maxChannels);
 
     mQuit = false;
     mSoundPoolRef = soundPoolRef;
     mDecodeThread = 0;
-    mMaxChannels = maxChannels;
     mStreamType = streamType;
     mSrcQuality = srcQuality;
     mAllocated = 0;
     mNextSampleID = 0;
     mNextChannelID = 0;
 
-    mChannelPool = new SoundChannel[maxChannels];
-    for (int i = 0; i < maxChannels; ++i) {
+    mChannelPool = new SoundChannel[mMaxChannels];
+    for (int i = 0; i < mMaxChannels; ++i) {
         mChannelPool[i].init(this);
         mChannels.push_back(&mChannelPool[i]);
     }
@@ -89,7 +93,7 @@ SoundPool::~SoundPool()
 
 void SoundPool::addToRestartList(SoundChannel* channel)
 {
-    Mutex::Autolock lock(&mLock);
+    Mutex::Autolock lock(&mRestartLock);
     mRestart.push_back(channel);
     mCondition.signal();
 }
@@ -102,9 +106,9 @@ int SoundPool::beginThread(void* arg)
 
 int SoundPool::run()
 {
-    mLock.lock();
+    mRestartLock.lock();
     while (!mQuit) {
-        mCondition.wait(mLock);
+        mCondition.wait(mRestartLock);
         LOGV("awake");
         if (mQuit) break;
 
@@ -121,19 +125,19 @@ int SoundPool::run()
 
     mRestart.clear();
     mCondition.signal();
-    mLock.unlock();
+    mRestartLock.unlock();
     LOGV("goodbye");
     return 0;
 }
 
 void SoundPool::quit()
 {
-    mLock.lock();
+    mRestartLock.lock();
     mQuit = true;
     mCondition.signal();
-    mCondition.wait(mLock);
+    mCondition.wait(mRestartLock);
     LOGV("return from quit");
-    mLock.unlock();
+    mRestartLock.unlock();
 }
 
 bool SoundPool::startThreads()
@@ -480,11 +484,8 @@ void SoundChannel::play(const sp<Sample>& sample, int nextChannelID, float leftV
     // if not idle, this voice is being stolen
     if (mState != IDLE) {
         LOGV("channel %d stolen - event queued for channel %d", channelID(), nextChannelID);
-        stop_l();
         mNextEvent.set(sample, nextChannelID, leftVolume, rightVolume, priority, loop, rate);
-#ifdef USE_SHARED_MEM_BUFFER
-        mSoundPool->done(this);
-#endif
+        stop();
         return;
     }
 
@@ -507,10 +508,12 @@ void SoundChannel::play(const sp<Sample>& sample, int nextChannelID, float leftV
         frameCount = sample->size()/numChannels/((sample->format() == AudioSystem::PCM_16_BIT) ? sizeof(int16_t) : sizeof(uint8_t));
     }
 
+#ifndef USE_SHARED_MEM_BUFFER
     // Ensure minimum audio buffer size in case of short looped sample
     if(frameCount < kDefaultBufferCount * bufferFrames) {
         frameCount = kDefaultBufferCount * bufferFrames;
     }
+#endif
 
     AudioTrack* newTrack;
     

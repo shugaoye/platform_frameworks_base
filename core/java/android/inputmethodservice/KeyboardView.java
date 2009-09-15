@@ -32,6 +32,7 @@ import android.os.Handler;
 import android.os.Message;
 import android.os.SystemClock;
 import android.util.AttributeSet;
+import android.util.TypedValue;
 import android.view.GestureDetector;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -161,8 +162,8 @@ public class KeyboardView extends View implements View.OnClickListener {
     private static final int MSG_REMOVE_PREVIEW = 2;
     private static final int MSG_REPEAT = 3;
     private static final int MSG_LONGPRESS = 4;
-    
-    private static final int DELAY_BEFORE_PREVIEW = 70;
+
+    private static final int DELAY_BEFORE_PREVIEW = 40;
     private static final int DELAY_AFTER_PREVIEW = 60;
     
     private int mVerticalCorrection;
@@ -407,7 +408,7 @@ public class KeyboardView extends View implements View.OnClickListener {
         // Release buffer, just in case the new keyboard has a different size. 
         // It will be reallocated on the next draw.
         mBuffer = null;
-        invalidateAll();
+        invalidateAllKeys();
         computeProximityThreshold(keyboard);
         mMiniKeyboardCache.clear(); // Not really necessary to do every time, but will free up views
     }
@@ -431,7 +432,7 @@ public class KeyboardView extends View implements View.OnClickListener {
         if (mKeyboard != null) {
             if (mKeyboard.setShifted(shifted)) {
                 // The whole keyboard probably needs to be redrawn
-                invalidateAll();
+                invalidateAllKeys();
                 return true;
             }
         }
@@ -573,7 +574,7 @@ public class KeyboardView extends View implements View.OnClickListener {
         if (mBuffer == null) {
             mBuffer = Bitmap.createBitmap(getWidth(), getHeight(), Bitmap.Config.ARGB_8888);
             mCanvas = new Canvas(mBuffer);
-            invalidateAll();
+            invalidateAllKeys();
         }
         final Canvas canvas = mCanvas;
         canvas.clipRect(mDirtyRect, Op.REPLACE);
@@ -825,10 +826,10 @@ public class KeyboardView extends View implements View.OnClickListener {
             mPreviewText.setCompoundDrawables(null, null, null, null);
             mPreviewText.setText(getPreviewText(key));
             if (key.label.length() > 1 && key.codes.length < 2) {
-                mPreviewText.setTextSize(mKeyTextSize);
+                mPreviewText.setTextSize(TypedValue.COMPLEX_UNIT_PX, mKeyTextSize);
                 mPreviewText.setTypeface(Typeface.DEFAULT_BOLD);
             } else {
-                mPreviewText.setTextSize(mPreviewTextSizeLarge);
+                mPreviewText.setTextSize(TypedValue.COMPLEX_UNIT_PX, mPreviewTextSizeLarge);
                 mPreviewText.setTypeface(Typeface.DEFAULT);
             }
         }
@@ -874,13 +875,27 @@ public class KeyboardView extends View implements View.OnClickListener {
         mPreviewText.setVisibility(VISIBLE);
     }
 
-    private void invalidateAll() {
+    /**
+     * Requests a redraw of the entire keyboard. Calling {@link #invalidate} is not sufficient
+     * because the keyboard renders the keys to an off-screen buffer and an invalidate() only 
+     * draws the cached buffer.
+     * @see #invalidateKey(int)
+     */
+    public void invalidateAllKeys() {
         mDirtyRect.union(0, 0, getWidth(), getHeight());
         mDrawPending = true;
         invalidate();
     }
-    
-    private void invalidateKey(int keyIndex) {
+
+    /**
+     * Invalidates a key so that it will be redrawn on the next repaint. Use this method if only
+     * one key is changing it's content. Any changes that affect the position or size of the key
+     * may not be honored.
+     * @param keyIndex the index of the key in the attached {@link Keyboard}.
+     * @see #invalidateAllKeys
+     */
+    public void invalidateKey(int keyIndex) {
+        if (mKeys == null) return;
         if (keyIndex < 0 || keyIndex >= mKeys.length) {
             return;
         }
@@ -991,7 +1006,7 @@ public class KeyboardView extends View implements View.OnClickListener {
             mPopupKeyboard.showAtLocation(this, Gravity.NO_GRAVITY, x, y);
             mMiniKeyboardOnScreen = true;
             //mMiniKeyboard.onTouchEvent(getTranslatedEvent(me));
-            invalidateAll();
+            invalidateAllKeys();
             return true;
         }
         return false;
@@ -1164,7 +1179,7 @@ public class KeyboardView extends View implements View.OnClickListener {
         if (mPopupKeyboard.isShowing()) {
             mPopupKeyboard.dismiss();
             mMiniKeyboardOnScreen = false;
-            invalidateAll();
+            invalidateAllKeys();
         }
     }
 

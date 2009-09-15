@@ -68,6 +68,18 @@ public class Process {
     public static final int PHONE_UID = 1001;
 
     /**
+     * Defines the UID/GID for the user shell.
+     * @hide
+     */
+    public static final int SHELL_UID = 2000;
+
+    /**
+     * Defines the UID/GID for the WIFI supplicant process.
+     * @hide
+     */
+    public static final int WIFI_UID = 1010;
+
+    /**
      * Defines the start of a range of UIDs (and GIDs), going from this
      * number to {@link #LAST_APPLICATION_UID} that are reserved for assigning
      * to applications.
@@ -175,6 +187,26 @@ public class Process {
      * Minimum increment to make a priority less favorable.
      */
     public static final int THREAD_PRIORITY_LESS_FAVORABLE = +1;
+
+    /**
+     * Default thread group - gets a 'normal' share of the CPU
+     * @hide
+     */
+    public static final int THREAD_GROUP_DEFAULT = 0;
+
+    /**
+     * Background non-interactive thread group - All threads in
+     * this group are scheduled with a reduced share of the CPU.
+     * @hide
+     */
+    public static final int THREAD_GROUP_BG_NONINTERACTIVE = 1;
+
+    /**
+     * Foreground 'boost' thread group - All threads in
+     * this group are scheduled with an increased share of the CPU
+     * @hide
+     **/
+    public static final int THREAD_GROUP_FG_BOOST = 2;
 
     public static final int SIGNAL_QUIT = 3;
     public static final int SIGNAL_KILL = 9;
@@ -553,7 +585,21 @@ public class Process {
      * directly to a gid.
      */
     public static final native int getGidForName(String name);
-    
+
+    /**
+     * Returns a uid for a currently running process.
+     * @param pid the process id
+     * @return the uid of the process, or -1 if the process is not running.
+     * @hide pending API council review
+     */
+    public static final int getUidForPid(int pid) {
+        String[] procStatusLabels = { "Uid:" };
+        long[] procStatusValues = new long[1];
+        procStatusValues[0] = -1;
+        Process.readProcLines("/proc/" + pid + "/status", procStatusLabels, procStatusValues);
+        return (int) procStatusValues[0];
+    }
+
     /**
      * Set the priority of a thread, based on Linux priorities.
      * 
@@ -568,6 +614,35 @@ public class Process {
      * priority.
      */
     public static final native void setThreadPriority(int tid, int priority)
+            throws IllegalArgumentException, SecurityException;
+
+    /**
+     * Sets the scheduling group for a thread.
+     * @hide
+     * @param tid The indentifier of the thread/process to change.
+     * @param group The target group for this thread/process.
+     * 
+     * @throws IllegalArgumentException Throws IllegalArgumentException if
+     * <var>tid</var> does not exist.
+     * @throws SecurityException Throws SecurityException if your process does
+     * not have permission to modify the given thread, or to use the given
+     * priority.
+     */
+    public static final native void setThreadGroup(int tid, int group)
+            throws IllegalArgumentException, SecurityException;
+    /**
+     * Sets the scheduling group for a process and all child threads
+     * @hide
+     * @param pid The indentifier of the process to change.
+     * @param group The target group for this process.
+     * 
+     * @throws IllegalArgumentException Throws IllegalArgumentException if
+     * <var>tid</var> does not exist.
+     * @throws SecurityException Throws SecurityException if your process does
+     * not have permission to modify the given thread, or to use the given
+     * priority.
+     */
+    public static final native void setProcessGroup(int pid, int group)
             throws IllegalArgumentException, SecurityException;
     
     /**
@@ -680,6 +755,8 @@ public class Process {
     /** @hide */
     public static final int PROC_SPACE_TERM = (int)' ';
     /** @hide */
+    public static final int PROC_TAB_TERM = (int)'\t';
+    /** @hide */
     public static final int PROC_COMBINE = 0x100;
     /** @hide */
     public static final int PROC_PARENS = 0x200;
@@ -693,6 +770,10 @@ public class Process {
     /** @hide */
     public static final native boolean readProcFile(String file, int[] format,
             String[] outStrings, long[] outLongs, float[] outFloats);
+    
+    /** @hide */
+    public static final native boolean parseProcLine(byte[] buffer, int startIndex, 
+            int endIndex, int[] format, String[] outStrings, long[] outLongs, float[] outFloats);
 
     /**
      * Gets the total Pss value for a given process, in bytes.

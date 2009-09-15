@@ -26,7 +26,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
-import android.telephony.gsm.SmsMessage;
+import android.telephony.SmsMessage;
 import android.text.TextUtils;
 import android.text.util.Regex;
 import android.util.Config;
@@ -44,8 +44,12 @@ import java.util.regex.Pattern;
  */
 public final class Telephony {
     private static final String TAG = "Telephony";
-    private static final boolean DEBUG = false;
+    private static final boolean DEBUG = true;
     private static final boolean LOCAL_LOGV = DEBUG ? Config.LOGD : Config.LOGV;
+
+    // Constructor
+    public Telephony() {
+    }
 
     /**
      * Base columns for tables that contain text based SMSs.
@@ -237,7 +241,7 @@ public final class Telephony {
             if (uri == null) {
                 return false;
             }
-            
+
             boolean markAsUnread = false;
             boolean markAsRead = false;
             switch(folder) {
@@ -264,7 +268,7 @@ public final class Telephony {
             } else if (markAsRead) {
                 values.put(READ, Integer.valueOf(1));
             }
-            
+
             return 1 == SqliteWrapper.update(context, context.getContentResolver(),
                             uri, values, null, null);
         }
@@ -462,6 +466,24 @@ public final class Telephony {
          */
         public static final class Intents {
             /**
+             * Set by BroadcastReceiver. Indicates the message was handled
+             * successfully.
+             */
+            public static final int RESULT_SMS_HANDLED = 1;
+
+            /**
+             * Set by BroadcastReceiver. Indicates a generic error while
+             * processing the message.
+             */
+            public static final int RESULT_SMS_GENERIC_ERROR = 2;
+
+            /**
+             * Set by BroadcastReceiver. Indicates insufficient memory to store
+             * the message.
+             */
+            public static final int RESULT_SMS_OUT_OF_MEMORY = 3;
+
+            /**
              * Broadcast Action: A new text based SMS message has been received
              * by the device. The intent will have the following extra
              * values:</p>
@@ -472,7 +494,10 @@ public final class Telephony {
              * </ul>
              *
              * <p>The extra values can be extracted using
-             * {@link #getMessagesFromIntent(Intent)}</p>
+             * {@link #getMessagesFromIntent(Intent)}.</p>
+             *
+             * <p>If a BroadcastReceiver encounters an error while processing
+             * this intent it should set the result code appropriately.</p>
              */
             @SdkConstant(SdkConstantType.BROADCAST_INTENT_ACTION)
             public static final String SMS_RECEIVED_ACTION =
@@ -489,7 +514,10 @@ public final class Telephony {
              * </ul>
              *
              * <p>The extra values can be extracted using
-             * {@link #getMessagesFromIntent(Intent)}</p>
+             * {@link #getMessagesFromIntent(Intent)}.</p>
+             *
+             * <p>If a BroadcastReceiver encounters an error while processing
+             * this intent it should set the result code appropriately.</p>
              */
             @SdkConstant(SdkConstantType.BROADCAST_INTENT_ACTION)
             public static final String DATA_SMS_RECEIVED_ACTION =
@@ -506,6 +534,9 @@ public final class Telephony {
              *   <li><em>pduType (Integer)</em> - The WAP PDU type</li>
              *   <li><em>data</em> - The data payload of the message</li>
              * </ul>
+             *
+             * <p>If a BroadcastReceiver encounters an error while processing
+             * this intent it should set the result code appropriately.</p>
              */
             @SdkConstant(SdkConstantType.BROADCAST_INTENT_ACTION)
             public static final String WAP_PUSH_RECEIVED_ACTION =
@@ -1105,8 +1136,14 @@ public final class Telephony {
             }
 
             Uri uri = uriBuilder.build();
+            if (DEBUG) {
+                Log.v(TAG, "getOrCreateThreadId uri: " + uri);
+            }
             Cursor cursor = SqliteWrapper.query(context, context.getContentResolver(),
                     uri, ID_PROJECTION, null, null, null);
+            if (DEBUG) {
+                Log.v(TAG, "getOrCreateThreadId cursor cnt: " + cursor.getCount());
+            }
             if (cursor != null) {
                 try {
                     if (cursor.moveToFirst()) {
@@ -1589,6 +1626,9 @@ public final class Telephony {
          *
          * It is recommended to display <em>plmn</em> before / above <em>spn</em> if
          * both are displayed.
+         *
+         * <p>Note this is a protected intent that can only be sent
+         * by the system.
          */
         public static final String SPN_STRINGS_UPDATED_ACTION =
                 "android.provider.Telephony.SPN_STRINGS_UPDATED";
@@ -1599,5 +1639,7 @@ public final class Telephony {
         public static final String EXTRA_SPN        = "spn";
     }
 }
+
+
 
 

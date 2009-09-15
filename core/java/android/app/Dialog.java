@@ -16,32 +16,35 @@
 
 package android.app;
 
+import com.android.internal.policy.PolicyManager;
+
 import android.content.Context;
 import android.content.DialogInterface;
+import android.content.ComponentName;
 import android.graphics.drawable.Drawable;
 import android.net.Uri;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Message;
-import android.os.Bundle;
 import android.util.Config;
 import android.util.Log;
 import android.view.ContextMenu;
 import android.view.ContextThemeWrapper;
 import android.view.Gravity;
 import android.view.KeyEvent;
+import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewConfiguration;
 import android.view.ViewGroup;
-import android.view.LayoutInflater;
 import android.view.Window;
 import android.view.WindowManager;
 import android.view.ContextMenu.ContextMenuInfo;
 import android.view.View.OnCreateContextMenuListener;
-
-import com.android.internal.policy.PolicyManager;
+import android.view.ViewGroup.LayoutParams;
+import android.view.accessibility.AccessibilityEvent;
 
 import java.lang.ref.WeakReference;
 
@@ -81,8 +84,10 @@ public class Dialog implements DialogInterface, Window.Callback,
      * {@hide}
      */
     protected boolean mCancelable = true;
+
     private Message mCancelMessage;
     private Message mDismissMessage;
+    private Message mShowMessage;
 
     /**
      * Whether to cancel the dialog when a touch is received outside of the
@@ -137,7 +142,7 @@ public class Dialog implements DialogInterface, Window.Callback,
         w.setWindowManager(mWindowManager, null, null);
         w.setGravity(Gravity.CENTER);
         mUiThread = Thread.currentThread();
-        mDismissCancelHandler = new DismissCancelHandler(this);
+        mListenersHandler = new ListenersHandler(this);
     }
 
     /**
@@ -209,7 +214,9 @@ public class Dialog implements DialogInterface, Window.Callback,
         if (mShowing) {
             if (Config.LOGV) Log.v(LOG_TAG,
                     "[Dialog] start: already showing, ignore");
-            if (mDecor != null) mDecor.setVisibility(View.VISIBLE);
+            if (mDecor != null) {
+                mDecor.setVisibility(View.VISIBLE);
+            }
             return;
         }
 
@@ -230,13 +237,17 @@ public class Dialog implements DialogInterface, Window.Callback,
         }
         mWindowManager.addView(mDecor, l);
         mShowing = true;
+
+        sendShowMessage();
     }
     
     /**
      * Hide the dialog, but do not dismiss it.
      */
     public void hide() {
-        if (mDecor != null) mDecor.setVisibility(View.GONE);
+        if (mDecor != null) {
+            mDecor.setVisibility(View.GONE);
+        }
     }
 
     /**
@@ -266,6 +277,7 @@ public class Dialog implements DialogInterface, Window.Callback,
         }
 
         mWindowManager.removeView(mDecor);
+
         mDecor = null;
         mWindow.closeAllPanels();
         onStop();
@@ -280,12 +292,21 @@ public class Dialog implements DialogInterface, Window.Callback,
             Message.obtain(mDismissMessage).sendToTarget();
         }
     }
-    
+
+    private void sendShowMessage() {
+        if (mShowMessage != null) {
+            // Obtain a new message so this dialog can be re-used
+            Message.obtain(mShowMessage).sendToTarget();
+        }
+    }
+
     // internal method to make sure mcreated is set properly without requiring
     // users to call through to super in onCreate
     void dispatchOnCreate(Bundle savedInstanceState) {
-        onCreate(savedInstanceState);
-        mCreated = true;
+        if (!mCreated) {
+            onCreate(savedInstanceState);
+            mCreated = true;
+        }
     }
 
     /**
@@ -608,6 +629,18 @@ public class Dialog implements DialogInterface, Window.Callback,
         return onTrackballEvent(ev);
     }
 
+    public boolean dispatchPopulateAccessibilityEvent(AccessibilityEvent event) {
+        event.setClassName(getClass().getName());
+        event.setPackageName(mContext.getPackageName());
+
+        LayoutParams params = getWindow().getAttributes();
+        boolean isFullScreen = (params.width == LayoutParams.FILL_PARENT) &&
+            (params.height == LayoutParams.FILL_PARENT);
+        event.setFullScreen(isFullScreen);
+
+        return false;
+    }
+
     /**
      * @see Activity#onCreatePanelView(int)
      */
@@ -752,8 +785,22 @@ public class Dialog implements DialogInterface, Window.Callback,
      * This hook is called when the user signals the desire to start a search.
      */
     public boolean onSearchRequested() {
-        // not during dialogs, no.
-        return false;
+        final SearchManager searchManager = (SearchManager) mContext
+                .getSystemService(Context.SEARCH_SERVICE);
+
+        // can't start search without an associated activity (e.g a system dialog)
+        if (!searchManager.hasIdent()) {
+            return false;
+        }
+
+        // associate search with owner activity if possible (otherwise it will default to
+        // global search).
+        final ComponentName appName = mOwnerActivity == null ? null
+                : mOwnerActivity.getComponentName();
+        final boolean globalSearch = (appName == null);
+        searchManager.startSearch(null, false, appName, null, globalSearch);
+        dismiss();
+        return true;
     }
 
 
@@ -868,7 +915,7 @@ public class Dialog implements DialogInterface, Window.Callback,
      */
     public void setOnCancelListener(final OnCancelListener listener) {
         if (listener != null) {
-            mCancelMessage = mDismissCancelHandler.obtainMessage(CANCEL, listener);
+            mCancelMessage = mListenersHandler.obtainMessage(CANCEL, listener);
         } else {
             mCancelMessage = null;
         }
@@ -889,9 +936,22 @@ public class Dialog implements DialogInterface, Window.Callback,
      */
     public void setOnDismissListener(final OnDismissListener listener) {
         if (listener != null) {
-            mDismissMessage = mDismissCancelHandler.obtainMessage(DISMISS, listener);
+            mDismissMessage = mListenersHandler.obtainMessage(DISMISS, listener);
         } else {
             mDismissMessage = null;
+        }
+    }
+
+    /**
+     * Sets a listener to be invoked when the dialog is shown.
+     *
+     * @hide Pending API council approval
+     */
+    public void setOnShowListener(OnShowListener listener) {
+        if (listener != null) {
+            mShowMessage = mListenersHandler.obtainMessage(SHOW, listener);
+        } else {
+            mShowMessage = null;
         }
     }
 
@@ -929,13 +989,14 @@ public class Dialog implements DialogInterface, Window.Callback,
 
     private static final int DISMISS = 0x43;
     private static final int CANCEL = 0x44;
+    private static final int SHOW = 0x45;
 
-    private Handler mDismissCancelHandler;
+    private Handler mListenersHandler;
 
-    private static final class DismissCancelHandler extends Handler {
+    private static final class ListenersHandler extends Handler {
         private WeakReference<DialogInterface> mDialog;
 
-        public DismissCancelHandler(Dialog dialog) {
+        public ListenersHandler(Dialog dialog) {
             mDialog = new WeakReference<DialogInterface>(dialog);
         }
 
@@ -947,6 +1008,9 @@ public class Dialog implements DialogInterface, Window.Callback,
                     break;
                 case CANCEL:
                     ((OnCancelListener) msg.obj).onCancel(mDialog.get());
+                    break;
+                case SHOW:
+                    ((OnShowListener) msg.obj).onShow(mDialog.get());
                     break;
             }
         }

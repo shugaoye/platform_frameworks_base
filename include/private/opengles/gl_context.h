@@ -285,6 +285,7 @@ struct light_t {
     vec4_t      normalizedObjPosition;
     vec4_t      spotDir;
     vec4_t      normalizedSpotDir;
+    vec4_t      objViewer;
     GLfixed     spotExp;
     GLfixed     spotCutoff;
     GLfixed     spotCutoffCosine;
@@ -456,7 +457,7 @@ struct matrix_stack_t {
     void validate();
     matrixf_t& top() { return stack[depth]; }
     const matrixf_t& top() const { return stack[depth]; }
-    const uint32_t top_ops() const { return ops[depth]; }
+    uint32_t top_ops() const { return ops[depth]; }
     inline bool isRigidBody() const {
         return !(ops[depth] & ~(OP_TRANSLATE|OP_UNIFORM_SCALE|OP_ROTATE));
     }

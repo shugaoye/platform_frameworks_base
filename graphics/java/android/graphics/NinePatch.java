@@ -57,7 +57,9 @@ public class NinePatch {
         mBitmap = patch.mBitmap;
         mChunk = patch.mChunk;
         mSrcName = patch.mSrcName;
-        mPaint = new Paint(patch.mPaint);
+        if (patch.mPaint != null) {
+            mPaint = new Paint(patch.mPaint);
+        }
         validateNinePatchChunk(mBitmap.ni(), mChunk);
     }
 
@@ -66,7 +68,7 @@ public class NinePatch {
     }
     
     /** 
-     * Draw a bitmap to nine patches.
+     * Draw a bitmap of nine patches.
      *
      * @param canvas    A container for the current matrix and clip used to draw the bitmap.
      * @param location  Where to draw the bitmap.
@@ -74,23 +76,25 @@ public class NinePatch {
     public void draw(Canvas canvas, RectF location) {
         nativeDraw(canvas.mNativeCanvas, location,
                    mBitmap.ni(), mChunk,
-                   mPaint != null ? mPaint.mNativePaint : 0);
+                   mPaint != null ? mPaint.mNativePaint : 0,
+                   canvas.mDensity, mBitmap.mDensity);
     }
     
     /** 
-     * Draw a bitmap to nine patches.
+     * Draw a bitmap of nine patches.
      *
      * @param canvas    A container for the current matrix and clip used to draw the bitmap.
      * @param location  Where to draw the bitmap.
      */
     public void draw(Canvas canvas, Rect location) {
         nativeDraw(canvas.mNativeCanvas, location,
-                   mBitmap.ni(), mChunk,
-                   mPaint != null ? mPaint.mNativePaint : 0);
+                mBitmap.ni(), mChunk,
+                mPaint != null ? mPaint.mNativePaint : 0,
+                canvas.mDensity, mBitmap.mDensity);
     }
 
     /** 
-     * Draw a bitmap to nine patches.
+     * Draw a bitmap of nine patches.
      *
      * @param canvas    A container for the current matrix and clip used to draw the bitmap.
      * @param location  Where to draw the bitmap.
@@ -98,9 +102,18 @@ public class NinePatch {
      */
     public void draw(Canvas canvas, Rect location, Paint paint) {
         nativeDraw(canvas.mNativeCanvas, location,
-                   mBitmap.ni(), mChunk, paint != null ? paint.mNativePaint : 0);
+                mBitmap.ni(), mChunk, paint != null ? paint.mNativePaint : 0,
+                canvas.mDensity, mBitmap.mDensity);
     }
 
+    /**
+     * Return the underlying bitmap's density, as per
+     * {@link Bitmap#getDensity() Bitmap.getDensity()}.
+     */
+    public int getDensity() {
+        return mBitmap.mDensity;
+    }
+    
     public int getWidth() {
         return mBitmap.getWidth();
     }
@@ -120,7 +133,6 @@ public class NinePatch {
     
     public native static boolean isNinePatchChunk(byte[] chunk);
 
-    private final Rect   mRect = new Rect();
     private final Bitmap mBitmap;
     private final byte[] mChunk;
     private Paint        mPaint;
@@ -128,9 +140,11 @@ public class NinePatch {
 
     private static native void validateNinePatchChunk(int bitmap, byte[] chunk);
     private static native void nativeDraw(int canvas_instance, RectF loc, int bitmap_instance,
-                                          byte[] c, int paint_instance_or_null);
+                                          byte[] c, int paint_instance_or_null,
+                                          int destDensity, int srcDensity);
     private static native void nativeDraw(int canvas_instance, Rect loc, int bitmap_instance,
-                                          byte[] c, int paint_instance_or_null);
+                                          byte[] c, int paint_instance_or_null,
+                                          int destDensity, int srcDensity);
     private static native int nativeGetTransparentRegion(
             int bitmap, byte[] chunk, Rect location);
 }

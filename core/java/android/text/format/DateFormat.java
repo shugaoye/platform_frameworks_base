@@ -242,7 +242,7 @@ public class DateFormat {
 
     /**
      * Returns a {@link java.text.DateFormat} object that can format the time according
-     * to the current user preference. 
+     * to the current locale and the user's 12-/24-hour clock preference.
      * @param context the application context
      * @return the {@link java.text.DateFormat} object that properly formats the time.
      */
@@ -260,52 +260,104 @@ public class DateFormat {
     }
 
     /**
-     * Returns a {@link java.text.DateFormat} object that can format the date according
-     * to the current user preference.
+     * Returns a {@link java.text.DateFormat} object that can format the date 
+     * in short form (such as 12/31/1999) according
+     * to the current locale and the user's date-order preference.
      * @param context the application context
      * @return the {@link java.text.DateFormat} object that properly formats the date.
      */
     public static final java.text.DateFormat getDateFormat(Context context) {
-        String value = getDateFormatString(context);
-        return new java.text.SimpleDateFormat(value);
+        String value = Settings.System.getString(context.getContentResolver(),
+                Settings.System.DATE_FORMAT);
+
+        return getDateFormatForSetting(context, value);
+    }
+
+    /**
+     * Returns a {@link java.text.DateFormat} object to format the date
+     * as if the date format setting were set to <code>value</code>,
+     * including null to use the locale's default format.
+     * @param context the application context
+     * @param value the date format setting string to interpret for
+     *              the current locale
+     * @hide
+     */
+    public static java.text.DateFormat getDateFormatForSetting(Context context,
+                                                               String value) {
+        String format = getDateFormatStringForSetting(context, value);
+
+        return new java.text.SimpleDateFormat(format);
+    }
+
+    private static String getDateFormatStringForSetting(Context context, String value) {
+        if (value != null) {
+            int month = value.indexOf('M');
+            int day = value.indexOf('d');
+            int year = value.indexOf('y');
+
+            if (month >= 0 && day >= 0 && year >= 0) {
+                String template = context.getString(R.string.numeric_date_template);
+                if (year < month && year < day) {
+                    if (month < day) {
+                        value = String.format(template, "yyyy", "MM", "dd");
+                    } else {
+                        value = String.format(template, "yyyy", "dd", "MM");
+                    }
+                } else if (month < day) {
+                    if (day < year) {
+                        value = String.format(template, "MM", "dd", "yyyy");
+                    } else { // unlikely
+                        value = String.format(template, "MM", "yyyy", "dd");
+                    }
+                } else { // day < month
+                    if (month < year) {
+                        value = String.format(template, "dd", "MM", "yyyy");
+                    } else { // unlikely
+                        value = String.format(template, "dd", "yyyy", "MM");
+                    }
+                }
+
+                return value;
+            }
+        }
+
+        /*
+         * The setting is not set; use the default.
+         * We use a resource string here instead of just DateFormat.SHORT
+         * so that we get a four-digit year instead a two-digit year.
+         */
+        value = context.getString(R.string.numeric_date_format);
+        return value;
     }
     
     /**
      * Returns a {@link java.text.DateFormat} object that can format the date
-     * in long form (such as December 31, 1999) based on user preference.
+     * in long form (such as December 31, 1999) for the current locale.
      * @param context the application context
      * @return the {@link java.text.DateFormat} object that formats the date in long form.
      */
     public static final java.text.DateFormat getLongDateFormat(Context context) {
-        String value = getDateFormatString(context);
-        if (value.indexOf('M') < value.indexOf('d')) {
-            value = context.getString(R.string.full_date_month_first);
-        } else {
-            value = context.getString(R.string.full_date_day_first);
-        }
-        return new java.text.SimpleDateFormat(value);
+        return java.text.DateFormat.getDateInstance(java.text.DateFormat.LONG);
     }
 
     /**
      * Returns a {@link java.text.DateFormat} object that can format the date
-     * in medium form (such as Dec. 31, 1999) based on user preference.
+     * in medium form (such as Dec. 31, 1999) for the current locale.
      * @param context the application context
      * @return the {@link java.text.DateFormat} object that formats the date in long form.
      */
     public static final java.text.DateFormat getMediumDateFormat(Context context) {
-        String value = getDateFormatString(context);
-        if (value.indexOf('M') < value.indexOf('d')) {
-            value = context.getString(R.string.medium_date_month_first);
-        } else {
-            value = context.getString(R.string.medium_date_day_first);
-        }
-        return new java.text.SimpleDateFormat(value);
+        return java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM);
     }
 
     /**
      * Gets the current date format stored as a char array. The array will contain
      * 3 elements ({@link #DATE}, {@link #MONTH}, and {@link #YEAR}) in the order    
-     * preferred by the user.
+     * specified by the user's format preference.  Note that this order is
+     * only appropriate for all-numeric dates; spelled-out (MEDIUM and LONG)
+     * dates will generally contain other punctuation, spaces, or words,
+     * not just the day, month, and year, and not necessarily in the same
+     * order returned here.
      */    
     public static final char[] getDateFormatOrder(Context context) {
         char[] order = new char[] {DATE, MONTH, YEAR};
@@ -340,14 +392,8 @@ public class DateFormat {
     private static String getDateFormatString(Context context) {
         String value = Settings.System.getString(context.getContentResolver(),
                 Settings.System.DATE_FORMAT);
-        if (value == null || value.length() < 6) {
-            /*
-             * No need to localize -- this is an emergency fallback in case
-             * the setting is missing, but it should always be set.
-             */
-            value = "MM-dd-yyyy";
-        }
-        return value;
+
+        return getDateFormatStringForSetting(context, value);
     }
 
     /**
