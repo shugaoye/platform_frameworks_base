@@ -209,7 +209,8 @@ sp<IMemory> MemoryHeapGem::mapMemory(size_t offset, size_t size)
 }
 
 const char GemDealer::GEM_DEVICE[] = "/dev/dri/card0";
-const size_t GemDealer::GEM_SIZE = 2 * 1024 * 1024;
+/* 1024 * 600 * 4 is about 2.5M  */
+const size_t GemDealer::GEM_SIZE = 5 * 1024 * 1024;
 int GemDealer::mFd = -1;
 
 GemDealer::GemDealer(const sp<HeapInterface>& heap)
