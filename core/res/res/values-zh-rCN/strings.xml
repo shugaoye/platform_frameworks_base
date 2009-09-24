@@ -133,13 +133,18 @@
     <string name="turn_off_radio" msgid="8198784949987062346">"关闭收音机"</string>
     <string name="screen_lock" msgid="799094655496098153">"屏幕锁定"</string>
     <string name="power_off" msgid="4266614107412865048">"关机"</string>
+    <string name="reboot">"重新启动"</string>
     <string name="shutdown_progress" msgid="2281079257329981203">"正在关机..."</string>
+    <string name="reboot_progress">"重新启动中..."</string>
     <string name="shutdown_confirm" msgid="649792175242821353">"您的手机会关机。"</string>
+    <string name="shutdown_nb_confirm">"确定关机吗?"</string>
+    <string name="reboot_nb_confirm">"确定重新启动吗?"</string>
     <string name="recent_tasks_title" msgid="3691764623638127888">"近期任务"</string>
     <string name="no_recent_tasks" msgid="279702952298056674">"没有最近的应用程序。"</string>
-    <string name="global_actions" msgid="2406416831541615258">"手机选项"</string>
+    <string name="global_actions" msgid="2406416831541615258">"选项"</string>
     <string name="global_action_lock" msgid="2844945191792119712">"屏幕锁定"</string>
     <string name="global_action_power_off" msgid="4471879440839879722">"关机"</string>
+    <string name="global_action_reboot">"重新开机"</string>
     <string name="global_action_toggle_silent_mode" msgid="8219525344246810925">"静音模式"</string>
     <string name="global_action_silent_mode_on_status" msgid="3289841937003758806">"声音已关闭"</string>
     <string name="global_action_silent_mode_off_status" msgid="1506046579177066419">"声音已开启"</string>
