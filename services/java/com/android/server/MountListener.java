@@ -41,7 +41,7 @@ final class MountListener implements Runnable {
     // ** THE FOLLOWING STRING CONSTANTS MUST MATCH VALUES IN system/vold/
     
     // socket name for connecting to mountd
-    private static final String VOLD_SOCKET = "mountd";
+    private static final String VOLD_SOCKET = "vold";
     
     // vold commands
     private static final String VOLD_CMD_ENABLE_UMS = "enable_ums";
