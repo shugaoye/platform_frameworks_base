@@ -610,8 +610,8 @@ void AndroidRuntime::start(const char* className, const bool startSystemServer)
 #undef __make_max_heap_opt
 #undef _make_max_heap_opt
 #else
-    /* limit memory use to 16MB */
-    opt.optionString = "-Xmx16m";
+    /* limit memory use to 32MB */
+    opt.optionString = "-Xmx32m";
 #endif
     mOptions.add(opt);
 
