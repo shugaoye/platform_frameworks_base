@@ -287,6 +287,7 @@ void DisplayHardware::releaseScreen() const
 void DisplayHardware::acquireScreen() const
 {
     DisplayHardwareBase::acquireScreen();
+    mDisplaySurface->acquireScreen();
 }
 
 void DisplayHardware::getDisplaySurface(copybit_image_t* img) const

@@ -52,6 +52,8 @@ public:
     void    copyFrontToBack(const Region& copyback);
     void    copyFrontToImage(const copybit_image_t& dst);
     void    copyBackToImage(const copybit_image_t& dst);
+    void    acquireScreen();
+    void    releaseScreen();
 
     void        setSwapRectangle(int l, int t, int w, int h);
 
@@ -62,6 +64,7 @@ private:
     static void         hook_decRef(NativeWindowType window);
     static uint32_t     hook_swapBuffers(NativeWindowType window);
 
+            int         setCrtc();
             uint32_t    swapBuffers();
 
 	    status_t    addFb(int fd);

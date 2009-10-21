@@ -167,20 +167,25 @@ void EGLKMSSurface::setSwapRectangle(int l, int t, int w, int h)
 {
 }
 
+int EGLKMSSurface::setCrtc()
+{
+	int ret;
+
+	ret = drmModeSetCrtc(egl_native_window_t::fd, mEncoder->crtc_id,
+			mFb[1 - mIndex].id, 0, 0, &mConnector->connector_id, 1,
+			mMode);
+	if (ret)
+		LOGE("drmModeSetCrtc failed");
+	return ret;
+}
+
 uint32_t EGLKMSSurface::swapBuffers()
 {
 	int ret;
 
 #if SINGLE_BUFFER_HACK
-	if (!mPageFlipCount) {
-		ret = drmModeSetCrtc(egl_native_window_t::fd, mEncoder->crtc_id,
-				mFb[1 - mIndex].id, 0, 0, &mConnector->connector_id, 1,
-				mMode);
-		if (ret) {
-			LOGE("drmModeSetCrtc failed");
-			return 0;
-		}
-	}
+	if (!mPageFlipCount)
+		setCrtc();
 #else
 	// do the actual flip
 	mIndex = 1 - mIndex;
@@ -190,19 +195,22 @@ uint32_t EGLKMSSurface::swapBuffers()
 		intptr_t(mFb[1 - mIndex].base) - egl_native_window_t::base;
 #endif
 
-	ret = drmModeSetCrtc(egl_native_window_t::fd, mEncoder->crtc_id,
-			mFb[mIndex].id, 0, 0, &mConnector->connector_id, 1,
-			mMode);
-	if (ret) {
-		LOGE("drmModeSetCrtc failed");
-		return 0;
-	}
+	setCrtc();
 #endif /* SINGLE_BUFFER_HACK */
 
 	mPageFlipCount++;
 
 	// We don't support screen-size changes for now
 	return 0;
+}
+
+void EGLKMSSurface::acquireScreen()
+{
+	setCrtc();
+}
+
+void EGLKMSSurface::releaseScreen()
+{
 }
 
 int32_t EGLKMSSurface::getPageFlipCount() const
