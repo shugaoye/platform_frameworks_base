@@ -25,6 +25,7 @@
 
 #include <pixelflinger/pixelflinger.h>
 #include <ui/EGLNativeSurface.h>
+#include <ui/EGLDisplaySurface.h>
 
 #include <EGL/egl.h>
 
@@ -95,6 +96,8 @@ private:
 	    char *base;
 	    uint32_t reserved[2];
     } mFb[2];
+
+    EGLDisplaySurface *mDisplaySurface;
 };
 
 // ---------------------------------------------------------------------------

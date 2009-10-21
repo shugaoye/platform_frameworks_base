@@ -34,6 +34,7 @@
 #include <ui/Rect.h>
 #include <ui/Region.h>
 #include <ui/EGLKMSSurface.h>
+#include <ui/EGLDisplaySurface.h>
 #include <ui/DisplayInfo.h>
 
 #include <i915_drm.h>
@@ -122,12 +123,20 @@ EGLKMSSurface::EGLKMSSurface()
 
         egl_native_window_t::oem[0] = mFb[1 - mIndex].name;
     }
+    else {
+	    mDisplaySurface = new EGLDisplaySurface();
+    }
     mPageFlipCount = 0;
 }
 
 EGLKMSSurface::~EGLKMSSurface()
 {
 	int i;
+
+	if (mDisplaySurface) {
+		delete mDisplaySurface;
+		return;
+	}
 
 	free(mBuffer);
 
@@ -165,6 +174,10 @@ uint32_t EGLKMSSurface::hook_swapBuffers(NativeWindowType window)
 
 void EGLKMSSurface::setSwapRectangle(int l, int t, int w, int h)
 {
+	if (mDisplaySurface) {
+		mDisplaySurface->setSwapRectangle(l, t, w, h);
+		return;
+	}
 }
 
 int EGLKMSSurface::setCrtc()
@@ -223,20 +236,32 @@ uint32_t EGLKMSSurface::swapBuffers()
 
 void EGLKMSSurface::acquireScreen()
 {
+	if (mDisplaySurface)
+		return;
 	setCrtc();
 }
 
 void EGLKMSSurface::releaseScreen()
 {
+	if (mDisplaySurface)
+		return;
 }
 
 int32_t EGLKMSSurface::getPageFlipCount() const
 {
+	if (mDisplaySurface)
+		return mDisplaySurface->getPageFlipCount();
+
 	return mPageFlipCount;
 }
 
 void EGLKMSSurface::copyFrontToBack(const Region& copyback)
 {
+	if (mDisplaySurface) {
+		mDisplaySurface->copyFrontToBack(copyback);
+		return;
+	}
+
 #if !SINGLE_BUFFER_HACK
 	Region::iterator iterator(copyback);
 	if (iterator) {
@@ -289,6 +314,11 @@ void EGLKMSSurface::copyFrontToImage(const copybit_image_t& dst)
 	const size_t bpr = egl_native_window_t::stride * bpp;
 	struct drm_i915_gem_pread pread;
 
+	if (mDisplaySurface) {
+		mDisplaySurface->copyFrontToImage(dst);
+		return;
+	}
+
 	memset(&pread, 0, sizeof(pread));
 	pread.handle = mFb[mIndex].handle;
 	pread.size = mFb[mIndex].size;
@@ -304,6 +334,11 @@ void EGLKMSSurface::copyBackToImage(const copybit_image_t& dst)
 	const size_t bpr = egl_native_window_t::stride * bpp;
 	struct drm_i915_gem_pread pread;
 
+	if (mDisplaySurface) {
+		mDisplaySurface->copyBackToImage(dst);
+		return;
+	}
+
 	memset(&pread, 0, sizeof(pread));
 	pread.handle = mFb[1 - mIndex].handle;
 	pread.size = mFb[1 - mIndex].size;
@@ -316,6 +351,9 @@ void EGLKMSSurface::copyBackToImage(const copybit_image_t& dst)
 int EGLKMSSurface::authMagic(drm_magic_t magic)
 {
 	drm_auth_t auth;
+
+	if (mDisplaySurface)
+		return 0;
 
 	auth.magic = magic;
 	if (ioctl(egl_native_window_t::fd, DRM_IOCTL_AUTH_MAGIC, &auth))
