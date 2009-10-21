@@ -110,7 +110,8 @@ PixelFormat DisplayHardware::getFormat() const  { return mFormat; }
 void DisplayHardware::init(uint32_t dpy)
 {
     // initialize EGL
-    const EGLint attribs[] = {
+    EGLint attribs[] = {
+            EGL_CONFIG_CAVEAT,  EGL_DONT_CARE,
             EGL_RED_SIZE,       5,
             EGL_GREEN_SIZE,     6,
             EGL_BLUE_SIZE,      5,
@@ -126,6 +127,9 @@ void DisplayHardware::init(uint32_t dpy)
 
     /* create KMS surface early so that it is DRM master */
     mDisplaySurface = new EGLKMSSurface();
+    /* fallback to libagl */
+    if (!mDisplaySurface->setMaster())
+	    attribs[1] = EGL_SLOW_CONFIG;
 
     // TODO: all the extensions below should be queried through
     // eglGetProcAddress().
