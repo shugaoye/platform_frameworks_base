@@ -172,9 +172,14 @@ LOCAL_JAVA_LIBRARIES := core ext
 LOCAL_MODULE := framework
 LOCAL_MODULE_CLASS := JAVA_LIBRARIES
 
-# List of classes and interfaces which should be loaded by the Zygote.
-LOCAL_JAVA_RESOURCE_FILES += $(LOCAL_PATH)/preloaded-classes.$(TARGET_ARCH)
 
+# List of classes and interfaces which should be loaded by the Zygote.
+# We should really just use  $(TARGET_DEVICE_DIR)/preloaded-classes
+ifneq ($(TARGET_ARCH),x86)
+LOCAL_JAVA_RESOURCE_FILES += $(LOCAL_PATH)/preloaded-classes
+else
+LOCAL_JAVA_RESOURCE_FILES += $(TARGET_DEVICE_DIR)/preloaded-classes
+endif
 #LOCAL_JARJAR_RULES := $(LOCAL_PATH)/jarjar-rules.txt
 
 LOCAL_DX_FLAGS := --core-library
