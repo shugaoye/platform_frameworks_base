@@ -179,6 +179,22 @@ int EGLKMSSurface::setCrtc()
 	return ret;
 }
 
+int EGLKMSSurface::setCPUDomain()
+{
+	struct drm_i915_gem_set_domain set_domain;
+	int ret;
+
+	memset(&set_domain, 0, sizeof(set_domain));
+	set_domain.handle = mFb[1 - mIndex].handle;
+	set_domain.read_domains = I915_GEM_DOMAIN_CPU;
+	set_domain.write_domain = I915_GEM_DOMAIN_CPU;
+
+	ret = ioctl(egl_native_window_t::fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain);
+	if (ret)
+		LOGE("failed to set back buffer to CPU domain");
+	return ret;
+}
+
 uint32_t EGLKMSSurface::swapBuffers()
 {
 	int ret;
@@ -188,14 +204,15 @@ uint32_t EGLKMSSurface::swapBuffers()
 		setCrtc();
 #else
 	// do the actual flip
+	setCrtc();
 	mIndex = 1 - mIndex;
+
         egl_native_window_t::oem[0] = mFb[1 - mIndex].name;
 #if AGL_SUPPORT
         egl_native_window_t::offset =
 		intptr_t(mFb[1 - mIndex].base) - egl_native_window_t::base;
+	setCPUDomain();
 #endif
-
-	setCrtc();
 #endif /* SINGLE_BUFFER_HACK */
 
 	mPageFlipCount++;

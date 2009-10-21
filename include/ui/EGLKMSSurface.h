@@ -65,6 +65,7 @@ private:
     static uint32_t     hook_swapBuffers(NativeWindowType window);
 
             int         setCrtc();
+            int         setCPUDomain();
             uint32_t    swapBuffers();
 
 	    status_t    addFb(int fd);
