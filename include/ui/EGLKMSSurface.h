@@ -58,6 +58,8 @@ public:
 
     void        setSwapRectangle(int l, int t, int w, int h);
 
+    bool    setMaster();
+    void    dropMaster();
     int authMagic(drm_magic_t magic);
 
 private:

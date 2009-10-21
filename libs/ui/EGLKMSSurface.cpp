@@ -348,6 +348,24 @@ void EGLKMSSurface::copyBackToImage(const copybit_image_t& dst)
 		LOGE("failed to copy back to image");
 }
 
+bool EGLKMSSurface::setMaster()
+{
+	int ret;
+
+	if (mDisplaySurface)
+		return false;
+
+	ret = ioctl(fd, DRM_IOCTL_SET_MASTER, 0);
+	return (ret == 0);
+}
+
+void EGLKMSSurface::dropMaster()
+{
+	if (mDisplaySurface)
+		return;
+	ioctl(fd, DRM_IOCTL_DROP_MASTER, 0);
+}
+
 int EGLKMSSurface::authMagic(drm_magic_t magic)
 {
 	drm_auth_t auth;
