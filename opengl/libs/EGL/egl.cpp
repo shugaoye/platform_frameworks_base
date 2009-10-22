@@ -1288,6 +1288,12 @@ const char* eglQueryString(EGLDisplay dpy, EGLint name)
         case EGL_VERSION:
             return gVersionString;
         case EGL_EXTENSIONS:
+	    for (int i = 0; i < IMPL_NUM_DRIVERS_IMPLEMENTATIONS; i++) {
+		    const char *exts = dp->queryString[i].extensions;
+		    /* concatenate?? */
+		    if (exts && exts[0])
+			    return exts;
+	    }
             return gExtensionString;
         case EGL_CLIENT_APIS:
             return gClientApiString;
