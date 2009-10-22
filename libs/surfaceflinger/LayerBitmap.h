@@ -70,6 +70,8 @@ public:
     const sp<MemoryDealer>& getAllocator() const { return mAllocator; }
     void getBitmapSurface(copybit_image_t* img) const;
 
+    int setCPUDomain(void);
+
 private:
     sp<MemoryDealer>        mAllocator;
     sp<IMemory>             mBitsMemory;
