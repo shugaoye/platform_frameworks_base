@@ -520,6 +520,8 @@ Region Layer::post(uint32_t* previousSate, bool& recomputeVisibleRegions)
         }
     }
 
+    /* the back buffer might be moved to GPU domain when it was a front buffer */
+    backBuffer().setCPUDomain();
     reloadTexture(dirty);
 
     return dirty;
