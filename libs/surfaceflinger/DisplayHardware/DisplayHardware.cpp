@@ -29,6 +29,7 @@
 #include <ui/EGLKMSSurface.h>
 
 #include <GLES/gl.h>
+#define EGL_EGLEXT_PROTOTYPES
 #include <EGL/eglext.h>
 
 
@@ -152,6 +153,12 @@ void DisplayHardware::init(uint32_t dpy)
     LOGI("version   : %s", eglQueryString(display, EGL_VERSION));
     LOGI("extensions: %s", egl_extensions);
     LOGI("Client API: %s", eglQueryString(display, EGL_CLIENT_APIS)?:"Not Supported");
+
+    if (strstr(egl_extensions, "EGL_KHR_image_pixmap")) {
+	    /* eglGetProcAddress is not working... */
+	    DisplayHardware::mCreateImageKHR = eglCreateImageKHR;
+	    DisplayHardware::mDestroyImageKHR = eglDestroyImageKHR;
+    }
 
     // TODO: get this from the devfb driver (probably should be HAL module)
     mFlags |= SWAP_RECTANGLE_EXTENSION;
@@ -365,6 +372,25 @@ void DisplayHardware::makeCurrent() const
 int DisplayHardware::authMagic(uint32_t magic) const
 {
     return mDisplaySurface->authMagic((drm_magic_t) magic);
+}
+
+EGLImageKHR DisplayHardware::createEGLImage(EGLNativePixmapType pix) const
+{
+	const EGLint attribs[] = {
+		EGL_IMAGE_PRESERVED_KHR, EGL_TRUE,
+		EGL_NONE
+	};
+	if (!mCreateImageKHR)
+		return NULL;
+	return mCreateImageKHR(mDisplay, EGL_NO_CONTEXT, EGL_NATIVE_PIXMAP_KHR,
+			(EGLClientBuffer) pix, attribs);
+}
+
+void DisplayHardware::destroyEGLImage(EGLImageKHR img) const
+{
+    if (!mDestroyImageKHR)
+	    return;
+    mDestroyImageKHR(mDisplay, img);
 }
 
 void DisplayHardware::copyFrontToImage(const copybit_image_t& front) const {

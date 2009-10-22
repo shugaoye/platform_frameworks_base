@@ -23,6 +23,7 @@
 #include <ui/Region.h>
 
 #include <EGL/egl.h>
+#include <EGL/eglext.h>
 
 #include "DisplayHardware/DisplayHardwareBase.h"
 
@@ -75,6 +76,9 @@ public:
 
     int         authMagic(uint32_t magic) const;
 
+    EGLImageKHR createEGLImage(EGLNativePixmapType pix) const;
+    void        destroyEGLImage(EGLImageKHR img) const;
+
     uint32_t getPageFlipCount() const;
     void getDisplaySurface(copybit_image_t* img) const;
     void getDisplaySurface(GGLSurface* fb) const;
@@ -109,6 +113,9 @@ private:
     sp<EGLKMSSurface> mDisplaySurface;
     copybit_device_t*     mBlitEngine;
     overlay_control_device_t* mOverlayEngine;
+
+    PFNEGLCREATEIMAGEKHRPROC mCreateImageKHR;
+    PFNEGLDESTROYIMAGEKHRPROC mDestroyImageKHR;
 };
 
 }; // namespace android
