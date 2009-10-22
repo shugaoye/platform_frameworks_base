@@ -215,6 +215,9 @@ void SurfaceFlinger::init()
     property_get("debug.sf.showfps", value, "0");
     mDebugFps = atoi(value);
 
+    property_get("debug.sf.eglimage", value, "0");
+    mDebugEGLImage = atoi(value);
+
     LOGI_IF(mDebugRegion,           "showupdates enabled");
     LOGI_IF(mDebugCpu,              "showcpu enabled");
     LOGI_IF(mDebugBackground,       "showbackground enabled");
@@ -550,6 +553,10 @@ bool SurfaceFlinger::threadLoop()
     if (LIKELY(hw.canDraw())) {
         // repaint the framebuffer (if needed)
         handleRepaint();
+	if (mDebugEGLImage) {
+		/* finish before releasing clients */
+		glFinish();
+	}
 
         // release the clients before we flip ('cause flip might block)
         unlockClients();

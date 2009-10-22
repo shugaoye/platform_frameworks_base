@@ -374,6 +374,7 @@ private:
                 int                         mDebugCpu;
                 int                         mDebugFps;
                 int                         mDebugBackground;
+                int                         mDebugEGLImage;
 
                 // these are thread safe
     mutable     Barrier                     mReadyToRunBarrier;
