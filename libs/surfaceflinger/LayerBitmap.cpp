@@ -41,6 +41,18 @@ LayerBitmap::LayerBitmap()
     : mAllocFlags(0), mOffset(0), mSize(-1U), mAlignment(2)
 {
     memset(&mSurface, 0, sizeof(mSurface));
+
+    egl_native_pixmap_t::version = sizeof(egl_native_pixmap_t);
+    egl_native_pixmap_t::width = 0;
+    egl_native_pixmap_t::height = 0;
+    egl_native_pixmap_t::stride = 0;
+    egl_native_pixmap_t::data = NULL;
+    egl_native_pixmap_t::format = 0;
+    egl_native_pixmap_t::rfu[0] = 0;
+    egl_native_pixmap_t::rfu[1] = 0;
+    egl_native_pixmap_t::rfu[2] = 0;
+    egl_native_pixmap_t::gem = 0;
+    egl_native_pixmap_t::reserved = 0;
 }
 
 LayerBitmap::~LayerBitmap()
@@ -111,6 +123,16 @@ status_t LayerBitmap::setBits(uint32_t w, uint32_t h, uint32_t alignment,
         mSurface.format = format;
         if (flags & SECURE_BITS)
             clear();
+
+	egl_native_pixmap_t::width = w;
+	egl_native_pixmap_t::height = h;
+	egl_native_pixmap_t::stride = stride;
+	egl_native_pixmap_t::data = mSurface.data;
+	egl_native_pixmap_t::format = format;
+
+	const sp<IMemoryHeap> heap = allocator->getMemoryHeap();
+	egl_native_pixmap_t::gem = heap->getGemName();
+	egl_native_pixmap_t::reserved = heap->getGemName();
     }
 
     if (mBitsMemory==0 || mSurface.data==0) {

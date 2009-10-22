@@ -25,6 +25,7 @@
 #include <ui/Rect.h>
 #include <private/ui/SharedState.h>
 #include <pixelflinger/pixelflinger.h>
+#include <EGL/eglnatives.h>
 
 class copybit_image_t;
 
@@ -38,7 +39,7 @@ class LayerBitmap;
 
 // ---------------------------------------------------------------------------
 
-class LayerBitmap
+class LayerBitmap : public egl_native_pixmap_t
 {
 public:
 
