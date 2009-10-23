@@ -83,6 +83,9 @@ void memory_gem_promote(sp<IMemoryHeap> &heap)
 {
 	sp<IMemoryHeap> tmp;
 
+	if (!heap.get())
+		return;
+
 	tmp = new BpMemoryHeapGem(heap->asBinder());
 	if (tmp->getGemName()) {
 		LOGI("%p promoted to MemoryHeapGem", heap.get());
