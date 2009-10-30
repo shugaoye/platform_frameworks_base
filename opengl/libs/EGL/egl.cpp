@@ -86,7 +86,7 @@ struct egl_display_t : public egl_object_t<'_dpy'>
 struct egl_surface_t : public egl_object_t<'_srf'>
 {
     egl_surface_t(EGLDisplay dpy, EGLSurface surface,
-            NativeWindowType window, int impl, egl_connection_t const* cnx) 
+            NativeWindowType window, int impl, egl_connection_t const* cnx)
     : dpy(dpy), surface(surface), window(window), impl(impl), cnx(cnx)
     {
         // NOTE: window must be incRef'ed and connected already
@@ -108,7 +108,7 @@ struct egl_surface_t : public egl_object_t<'_srf'>
 struct egl_context_t : public egl_object_t<'_ctx'>
 {
     egl_context_t(EGLDisplay dpy, EGLContext context,
-            int impl, egl_connection_t const* cnx) 
+            int impl, egl_connection_t const* cnx)
     : dpy(dpy), context(context), read(0), draw(0), impl(impl), cnx(cnx)
     {
     }
@@ -123,7 +123,7 @@ struct egl_context_t : public egl_object_t<'_ctx'>
 struct egl_image_t : public egl_object_t<'_img'>
 {
     egl_image_t(EGLDisplay dpy, EGLContext context, EGLImageKHR image,
-            int impl, egl_connection_t const* cnx) 
+            int impl, egl_connection_t const* cnx)
     : dpy(dpy), context(context), image(image), impl(impl), cnx(cnx)
     {
     }

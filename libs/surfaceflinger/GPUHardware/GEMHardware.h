@@ -41,26 +41,26 @@ class GEMHardware : public GPUHardwareInterface, public IBinder::DeathRecipient
 public:
             GEMHardware();
     virtual ~GEMHardware();
-    
+
     virtual sp<MemoryDealer> request(int pid);
-    virtual status_t request(int pid, 
+    virtual status_t request(int pid,
             const sp<IGPUCallback>& callback,
             ISurfaceComposer::gpu_info_t* gpu);
 
     virtual void revoke(int pid);
     virtual status_t friendlyRevoke();
     virtual void unconditionalRevoke();
-    
+
     virtual pid_t getOwner() const { return 0; }
     virtual sp<SimpleBestFitAllocator> getAllocator() const { return 0; }
 
 private:
-    
+
     struct Client {
         pid_t       pid;
         int         count;
     };
-    
+
     KeyedVector<pid_t, Client> mClients;
     DefaultKeyedVector< wp<IBinder>, pid_t > mRegisteredClients;
 

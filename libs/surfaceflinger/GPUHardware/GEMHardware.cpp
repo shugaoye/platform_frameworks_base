@@ -69,7 +69,7 @@ public:
     virtual uint32_t    getGemHandle() const;
 
     const char*         getDevice() const { return NULL; }
-    
+
     /* HeapInterface */
     virtual sp<IMemory> mapMemory(size_t offset, size_t size);
 
