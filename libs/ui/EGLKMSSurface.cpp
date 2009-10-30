@@ -124,7 +124,15 @@ EGLKMSSurface::EGLKMSSurface()
         egl_native_window_t::oem[0] = mFb[1 - mIndex].name;
     }
     else {
+	    LOGD("wrapping EGLDisplaySurface in EGLKMSSurface");
+	    LOGD("This is a hack!");
 	    mDisplaySurface = new EGLDisplaySurface();
+	    egl_native_window_t *native_win = static_cast<egl_native_window_t *>(this);
+	    *native_win = *static_cast<egl_native_window_t *>(mDisplaySurface);
+	    /* hook again */
+	    egl_native_window_t::incRef = &EGLKMSSurface::hook_incRef;
+	    egl_native_window_t::decRef = &EGLKMSSurface::hook_decRef;
+	    egl_native_window_t::swapBuffers = &EGLKMSSurface::hook_swapBuffers;
     }
     mPageFlipCount = 0;
 }
@@ -157,18 +165,34 @@ EGLKMSSurface::~EGLKMSSurface()
 void EGLKMSSurface::hook_incRef(NativeWindowType window)
 {
 	EGLKMSSurface* that = static_cast<EGLKMSSurface*>(window);
+	if (that->mDisplaySurface) {
+		that->mDisplaySurface->incRef(that->mDisplaySurface);
+		return;
+	}
 	that->incStrong(that);
 }
 
 void EGLKMSSurface::hook_decRef(NativeWindowType window)
 {
 	EGLKMSSurface* that = static_cast<EGLKMSSurface*>(window);
+	if (that->mDisplaySurface) {
+		that->mDisplaySurface->decRef(that->mDisplaySurface);
+		return;
+	}
 	that->decStrong(that);
 }
 
 uint32_t EGLKMSSurface::hook_swapBuffers(NativeWindowType window)
 {
 	EGLKMSSurface* that = static_cast<EGLKMSSurface*>(window);
+	if (that->mDisplaySurface) {
+		NativeWindowType win = static_cast<NativeWindowType>(that->mDisplaySurface);
+		uint32_t flags;
+		flags = win->swapBuffers(win);
+		/* offset is updated */
+		that->offset = win->offset;
+		return flags;
+	}
 	return that->swapBuffers();
 }
 
