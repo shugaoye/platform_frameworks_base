@@ -112,6 +112,7 @@ LOCAL_SRC_FILES:= \
 	IPCThreadState.cpp \
 	MemoryDealer.cpp \
     MemoryBase.cpp \
+    MemoryGem.cpp \
     MemoryHeapBase.cpp \
     MemoryHeapPmem.cpp \
 	Parcel.cpp \
@@ -136,6 +137,10 @@ endif
 LOCAL_C_INCLUDES += \
 		external/zlib \
 		external/icu4c/common
+LOCAL_C_INCLUDES += \
+		external/drm/shared-core \
+		external/drm/libdrm \
+		external/drm/libdrm/intel
 LOCAL_LDLIBS += -lpthread
 
 LOCAL_SHARED_LIBRARIES := \

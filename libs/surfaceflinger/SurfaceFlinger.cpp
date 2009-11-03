@@ -215,6 +215,9 @@ void SurfaceFlinger::init()
     property_get("debug.sf.showfps", value, "0");
     mDebugFps = atoi(value);
 
+    property_get("debug.sf.eglimage", value, "0");
+    mDebugEGLImage = atoi(value);
+
     LOGI_IF(mDebugRegion,           "showupdates enabled");
     LOGI_IF(mDebugCpu,              "showcpu enabled");
     LOGI_IF(mDebugBackground,       "showbackground enabled");
@@ -260,6 +263,12 @@ status_t SurfaceFlinger::revokeGPU()
         return INVALID_OPERATION;
 
     return mGPU->friendlyRevoke();
+}
+
+status_t SurfaceFlinger::authGPU(uint32_t magic)
+{
+	const DisplayHardware& hw(graphicPlane(0).displayHardware());
+	return hw.authMagic(magic);
 }
 
 sp<ISurfaceFlingerClient> SurfaceFlinger::createConnection()
@@ -544,6 +553,10 @@ bool SurfaceFlinger::threadLoop()
     if (LIKELY(hw.canDraw())) {
         // repaint the framebuffer (if needed)
         handleRepaint();
+	if (mDebugEGLImage) {
+		/* finish before releasing clients */
+		glFinish();
+	}
 
         // release the clients before we flip ('cause flip might block)
         unlockClients();
@@ -1761,6 +1774,7 @@ sp<ISurface> BClient::createSurface(
         DisplayID display, uint32_t w, uint32_t h, PixelFormat format,
         uint32_t flags)
 {
+    /* no need to memory_gem_promote as the surface is not used locally */
     return mFlinger->createSurface(mId, pid, params, display, w, h, format, flags);
 }
 

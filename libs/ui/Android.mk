@@ -34,6 +34,12 @@ LOCAL_SHARED_LIBRARIES := \
 	libhardware \
 	libhardware_legacy
 
+LOCAL_SRC_FILES += EGLKMSSurface.cpp
+LOCAL_SHARED_LIBRARIES += libdrm
+LOCAL_C_INCLUDES += \
+	external/drm/shared-core \
+	external/drm/libdrm
+
 LOCAL_MODULE:= libui
 
 include $(BUILD_SHARED_LIBRARY)

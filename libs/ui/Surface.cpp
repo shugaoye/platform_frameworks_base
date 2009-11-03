@@ -29,6 +29,7 @@
 #include <utils/IPCThreadState.h>
 #include <utils/IMemory.h>
 #include <utils/Log.h>
+#include <utils/MemoryGem.h>
 
 #include <ui/ISurface.h>
 #include <ui/Surface.h>
@@ -115,6 +116,22 @@ status_t Surface::lock(SurfaceInfo* info, Region* dirty, bool blocking) {
     return mClient->lockSurface(this, info, dirty, blocking);
 }
 
+status_t Surface::lockGem(SurfaceInfo* info, uint32_t* name)
+{
+    status_t err;
+    uint32_t n;
+
+    err = lock(info);
+    if (err != NO_ERROR)
+	    return err;
+
+    n = mHeap[mBackbufferIndex]->getGemName();
+    if (name)
+	    *name = n;
+
+    return NO_ERROR;
+}
+
 status_t Surface::unlockAndPost() {
     if (heapBase(0) == 0) return INVALID_OPERATION;
     if (heapBase(1) == 0) return INVALID_OPERATION;
@@ -192,6 +209,11 @@ sp<Surface> Surface::readFromParcel(Parcel* parcel)
 
     if (clientBinder != NULL)
         client = SurfaceComposerClient::clientForConnection(clientBinder);
+
+    if (flags & ISurfaceComposer::eGPU) {
+        memory_gem_promote(data.heap[0]);
+        memory_gem_promote(data.heap[1]);
+    }
 
     return new Surface(client, surface, data, 0, 0, format, flags, false);
 }

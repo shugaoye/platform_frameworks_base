@@ -26,8 +26,10 @@
 #include <utils/Log.h>
 
 #include <ui/EGLDisplaySurface.h>
+#include <ui/EGLKMSSurface.h>
 
 #include <GLES/gl.h>
+#define EGL_EGLEXT_PROTOTYPES
 #include <EGL/eglext.h>
 
 
@@ -109,7 +111,8 @@ PixelFormat DisplayHardware::getFormat() const  { return mFormat; }
 void DisplayHardware::init(uint32_t dpy)
 {
     // initialize EGL
-    const EGLint attribs[] = {
+    EGLint attribs[] = {
+            EGL_CONFIG_CAVEAT,  EGL_DONT_CARE,
             EGL_RED_SIZE,       5,
             EGL_GREEN_SIZE,     6,
             EGL_BLUE_SIZE,      5,
@@ -122,6 +125,12 @@ void DisplayHardware::init(uint32_t dpy)
     EGLSurface surface;
     EGLContext context;
     mFlags = 0;
+
+    /* create KMS surface early so that it is DRM master */
+    mDisplaySurface = new EGLKMSSurface();
+    /* fallback to libagl */
+    if (!mDisplaySurface->setMaster())
+	    attribs[1] = EGL_SLOW_CONFIG;
 
     // TODO: all the extensions below should be queried through
     // eglGetProcAddress().
@@ -145,6 +154,12 @@ void DisplayHardware::init(uint32_t dpy)
     LOGI("extensions: %s", egl_extensions);
     LOGI("Client API: %s", eglQueryString(display, EGL_CLIENT_APIS)?:"Not Supported");
 
+    if (strstr(egl_extensions, "EGL_KHR_image_pixmap")) {
+	    /* eglGetProcAddress is not working... */
+	    DisplayHardware::mCreateImageKHR = eglCreateImageKHR;
+	    DisplayHardware::mDestroyImageKHR = eglDestroyImageKHR;
+    }
+
     // TODO: get this from the devfb driver (probably should be HAL module)
     mFlags |= SWAP_RECTANGLE_EXTENSION;
     
@@ -159,8 +174,6 @@ void DisplayHardware::init(uint32_t dpy)
     /*
      * Create our main surface
      */
-
-    mDisplaySurface = new EGLDisplaySurface();
 
     surface = eglCreateWindowSurface(display, config, mDisplaySurface.get(), NULL);
     //checkEGLErrors("eglCreateDisplaySurfaceANDROID");
@@ -225,7 +238,8 @@ void DisplayHardware::init(uint32_t dpy)
     LOGI("vendor    : %s", glGetString(GL_VENDOR));
     LOGI("renderer  : %s", glGetString(GL_RENDERER));
     LOGI("version   : %s", glGetString(GL_VERSION));
-    LOGI("extensions: %s", gl_extensions);
+    //LOGI("extensions: %s", gl_extensions);
+    LOGI("extensions: %s", "too many to list");
 
     if (strstr(gl_extensions, "GL_ARB_texture_non_power_of_two")) {
         mFlags |= NPOT_EXTENSION;
@@ -236,6 +250,8 @@ void DisplayHardware::init(uint32_t dpy)
     if (strstr(gl_extensions, "GL_ANDROID_direct_texture")) {
         mFlags |= DIRECT_TEXTURE;
     }
+
+    LOGI("DisplayHardware flags 0x%x", mFlags);
 
     // Unbind the context from this thread
     eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
@@ -282,6 +298,7 @@ void DisplayHardware::releaseScreen() const
 void DisplayHardware::acquireScreen() const
 {
     DisplayHardwareBase::acquireScreen();
+    mDisplaySurface->acquireScreen();
 }
 
 void DisplayHardware::getDisplaySurface(copybit_image_t* img) const
@@ -350,6 +367,30 @@ uint32_t DisplayHardware::getFlags() const
 void DisplayHardware::makeCurrent() const
 {
     eglMakeCurrent(mDisplay, mSurface, mSurface, mContext);
+}
+
+int DisplayHardware::authMagic(uint32_t magic) const
+{
+    return mDisplaySurface->authMagic((drm_magic_t) magic);
+}
+
+EGLImageKHR DisplayHardware::createEGLImage(EGLNativePixmapType pix) const
+{
+	const EGLint attribs[] = {
+		EGL_IMAGE_PRESERVED_KHR, EGL_TRUE,
+		EGL_NONE
+	};
+	if (!mCreateImageKHR)
+		return NULL;
+	return mCreateImageKHR(mDisplay, EGL_NO_CONTEXT, EGL_NATIVE_PIXMAP_KHR,
+			(EGLClientBuffer) pix, attribs);
+}
+
+void DisplayHardware::destroyEGLImage(EGLImageKHR img) const
+{
+    if (!mDestroyImageKHR)
+	    return;
+    mDestroyImageKHR(mDisplay, img);
 }
 
 void DisplayHardware::copyFrontToImage(const copybit_image_t& front) const {

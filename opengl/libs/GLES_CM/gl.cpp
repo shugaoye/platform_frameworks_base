@@ -126,11 +126,16 @@ extern "C" {
  */
 
 
+void *unwrap_egl_image(void *image);
+
 void glEGLImageTargetTexture2DOES(GLenum target, GLeglImageOES image)
 {
+	GLeglImageOES img = (GLeglImageOES) unwrap_egl_image((void *) image);
+	__glEGLImageTargetTexture2DOES(target, img);
 }
 
 void glEGLImageTargetRenderbufferStorageOES(GLenum target, GLeglImageOES image)
 {
+	GLeglImageOES img = (GLeglImageOES) unwrap_egl_image((void *) image);
+	__glEGLImageTargetRenderbufferStorageOES(target, img);
 }
-

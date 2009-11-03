@@ -54,8 +54,10 @@ public:
 
     status_t    lock(SurfaceInfo* info, bool blocking = true);
     status_t    lock(SurfaceInfo* info, Region* dirty, bool blocking = true);
+    status_t    lockGem(SurfaceInfo* info, uint32_t* name);
     status_t    unlockAndPost();
     status_t    unlock();
+
 
     void*       heapBase(int i) const;
     uint32_t    getFlags() const { return mFlags; }

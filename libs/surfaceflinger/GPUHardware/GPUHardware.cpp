@@ -48,6 +48,7 @@
 #endif
 
 #include "GPUHardware/GPUHardware.h"
+#include "GPUHardware/GEMHardware.h"
 
 
 /* 
@@ -576,6 +577,8 @@ sp<GPUHardwareInterface> GPUFactory::getGPU()
     sp<GPUHardwareInterface> gpu;
     if (access("/dev/hw3d", F_OK) == 0) {
         gpu = new GPUHardware();
+    } else if (access("/dev/dri/card0", F_OK) == 0) {
+        gpu = new GEMHardware();
     }
     return gpu;
 }

@@ -27,10 +27,9 @@
 #include <linux/android_pmem.h>
 #endif
 
+#define EGL_EGLEXT_PROTOTYPES
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
-#include <GLES/gl.h>
-#include <GLES/glext.h>
 
 #include <cutils/log.h>
 #include <cutils/atomic.h>
@@ -117,6 +116,20 @@ struct egl_context_t : public egl_object_t<'_ctx'>
     EGLContext                  context;
     EGLSurface                  read;
     EGLSurface                  draw;
+    int                         impl;
+    egl_connection_t const*     cnx;
+};
+
+struct egl_image_t : public egl_object_t<'_img'>
+{
+    egl_image_t(EGLDisplay dpy, EGLContext context, EGLImageKHR image,
+            int impl, egl_connection_t const* cnx) 
+    : dpy(dpy), context(context), image(image), impl(impl), cnx(cnx)
+    {
+    }
+    EGLDisplay                  dpy;
+    EGLContext                  context;
+    EGLImageKHR                 image;
     int                         impl;
     egl_connection_t const*     cnx;
 };
@@ -489,6 +502,11 @@ egl_surface_t* get_surface(EGLSurface surface) {
 static inline
 egl_context_t* get_context(EGLContext context) {
     return egl_to_native_cast<egl_context_t>(context);
+}
+
+static inline
+egl_image_t* get_image(EGLImageKHR image) {
+    return egl_to_native_cast<egl_image_t>(image);
 }
 
 static egl_connection_t* validate_display_config(
@@ -1270,6 +1288,12 @@ const char* eglQueryString(EGLDisplay dpy, EGLint name)
         case EGL_VERSION:
             return gVersionString;
         case EGL_EXTENSIONS:
+	    for (int i = 0; i < IMPL_NUM_DRIVERS_IMPLEMENTATIONS; i++) {
+		    const char *exts = dp->queryString[i].extensions;
+		    /* concatenate?? */
+		    if (exts && exts[0])
+			    return exts;
+	    }
             return gExtensionString;
         case EGL_CLIENT_APIS:
             return gClientApiString;
@@ -1429,4 +1453,46 @@ EGLSurface eglCreatePbufferFromClientBuffer(
                 dp->dpys[i], buftype, buffer, dp->configs[i][index], attrib_list);
     }
     return setError(EGL_BAD_CONFIG, EGL_NO_SURFACE);
+}
+
+EGLImageKHR eglCreateImageKHR(
+	  EGLDisplay dpy, EGLContext ctx, EGLenum target,
+	  EGLClientBuffer buffer, const EGLint *attrib_list)
+{
+    egl_display_t const* dp = 0;
+    egl_context_t * const c = get_context(ctx);
+    dp = get_display(dpy);
+    if (!dp) return setError(EGL_BAD_DISPLAY, (egl_connection_t*)NULL);
+
+    for (int i=0 ; i<IMPL_NUM_DRIVERS_IMPLEMENTATIONS ; i++) {
+        egl_connection_t* const cnx = &gEGLImpl[i];
+        if (cnx->dso) {
+            if (cnx->hooks->egl.eglCreateImageKHR) {
+		EGLImageKHR img = cnx->hooks->egl.eglCreateImageKHR(dp->dpys[i], (c) ? c->context : EGL_NO_CONTEXT, target, buffer, attrib_list);
+		if (img != EGL_NO_IMAGE_KHR) {
+			egl_image_t* eimg = new egl_image_t(dpy, c, img, i, cnx);
+			return eimg;
+		}
+            }
+        }
+    }
+    return EGL_NO_IMAGE_KHR;
+}
+
+EGLBoolean eglDestroyImageKHR(
+	  EGLDisplay dpy, EGLImageKHR image)
+{
+    egl_display_t const* dp = 0;
+    egl_image_t * const img = get_image(image);
+    dp = get_display(dpy);
+    if (!dp) return setError(EGL_BAD_DISPLAY, EGL_FALSE);
+    if (!img) return setError(EGL_BAD_PARAMETER, EGL_FALSE);
+
+    EGLBoolean result = img->cnx->hooks->egl.eglDestroyImageKHR(dp->dpys[img->impl], img->image);
+    return result;
+}
+
+EGLAPI void *unwrap_egl_image(void *img)
+{
+	return get_image(img)->image;
 }

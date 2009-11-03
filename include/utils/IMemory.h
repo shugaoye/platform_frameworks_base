@@ -45,6 +45,9 @@ public:
     virtual size_t      getSize() const = 0;
     virtual uint32_t    getFlags() const = 0;
 
+    virtual uint32_t         getGemName() const { return 0; }
+    virtual uint32_t         getGemHandle() const { return 0; }
+
     // these are there just for backward source compatibility
     int32_t heapID() const { return getHeapID(); }
     void*   base() const  { return getBase(); }

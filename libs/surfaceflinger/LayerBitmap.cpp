@@ -41,6 +41,18 @@ LayerBitmap::LayerBitmap()
     : mAllocFlags(0), mOffset(0), mSize(-1U), mAlignment(2)
 {
     memset(&mSurface, 0, sizeof(mSurface));
+
+    egl_native_pixmap_t::version = sizeof(egl_native_pixmap_t);
+    egl_native_pixmap_t::width = 0;
+    egl_native_pixmap_t::height = 0;
+    egl_native_pixmap_t::stride = 0;
+    egl_native_pixmap_t::data = NULL;
+    egl_native_pixmap_t::format = 0;
+    egl_native_pixmap_t::rfu[0] = 0;
+    egl_native_pixmap_t::rfu[1] = 0;
+    egl_native_pixmap_t::rfu[2] = 0;
+    egl_native_pixmap_t::gem = 0;
+    egl_native_pixmap_t::reserved = 0;
 }
 
 LayerBitmap::~LayerBitmap()
@@ -111,6 +123,18 @@ status_t LayerBitmap::setBits(uint32_t w, uint32_t h, uint32_t alignment,
         mSurface.format = format;
         if (flags & SECURE_BITS)
             clear();
+
+	egl_native_pixmap_t::width = w;
+	egl_native_pixmap_t::height = h;
+	egl_native_pixmap_t::stride = stride;
+	egl_native_pixmap_t::data = mSurface.data;
+	egl_native_pixmap_t::format = format;
+
+	const sp<IMemoryHeap> heap = allocator->getMemoryHeap();
+	egl_native_pixmap_t::gem = heap->getGemName();
+	egl_native_pixmap_t::reserved = heap->getGemName();
+
+	setCPUDomain();
     }
 
     if (mBitsMemory==0 || mSurface.data==0) {
@@ -180,6 +204,34 @@ void LayerBitmap::getBitmapSurface(copybit_image_t* img) const
     img->offset = intptr_t(t.data) - intptr_t(sbase);
     img->base = sbase;
     img->fd = mh->heapID();
+}
+
+#include <i915_drm.h>
+/* XXX this should be a method of IMemoryHeap */
+int LayerBitmap::setCPUDomain()
+{
+	const sp<MemoryDealer>& allocator(mAllocator);
+	const sp<IMemoryHeap> heap = allocator->getMemoryHeap();
+	struct drm_i915_gem_set_domain set_domain;
+	uint32_t handle;
+	int fd, ret;
+
+	fd = heap->getHeapID();
+	handle = heap->getGemHandle();
+	if (fd < 0 || !handle) {
+		/* not a GEM heap */
+		return 0;
+	}
+
+	memset(&set_domain, 0, sizeof(set_domain));
+	set_domain.handle = handle;
+	set_domain.read_domains = I915_GEM_DOMAIN_CPU;
+	set_domain.write_domain = I915_GEM_DOMAIN_CPU;
+
+	ret = ioctl(fd, DRM_IOCTL_I915_GEM_SET_DOMAIN, &set_domain);
+	if (ret)
+		LOGE("failed to set LayerBitmap to CPU domain");
+	return ret;
 }
 
 // ---------------------------------------------------------------------------

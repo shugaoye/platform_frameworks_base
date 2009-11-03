@@ -106,13 +106,18 @@ uint32_t EGLNativeWindowSurface::swapBuffers()
     const int w = egl_native_window_t::width;
     const int h = egl_native_window_t::height;
     const sp<Surface>& surface(mSurface);
+    uint32_t name;
+
     Surface::SurfaceInfo info;
     surface->unlockAndPost();
-    surface->lock(&info);
+    surface->lockGem(&info, &name);
     // update the address of the buffer to draw to next
     egl_native_window_t::base   = intptr_t(info.base);
     egl_native_window_t::offset = intptr_t(info.bits) - intptr_t(info.base);
     
+    if (name)
+        egl_native_window_t::oem[0] = name;
+
     // update size if it changed
     if (w != int(info.w) || h != int(info.h)) {
         egl_native_window_t::width  = info.w;
@@ -128,7 +133,8 @@ void EGLNativeWindowSurface::connect()
 {   
     if (!mConnected) {
         Surface::SurfaceInfo info;
-        mSurface->lock(&info);
+        uint32_t name;
+        mSurface->lockGem(&info, &name);
         mSurface->setSwapRectangle(Rect(info.w, info.h));
         mConnected = true;
 
@@ -145,6 +151,9 @@ void EGLNativeWindowSurface::connect()
         // completely, since memory will be managed by OpenGL.
         egl_native_window_t::memory_type = NATIVE_MEMORY_TYPE_GPU; 
         egl_native_window_t::fd = 0;
+
+	if (name)
+                egl_native_window_t::oem[0] = name;
     }
 }
 

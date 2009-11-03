@@ -23,6 +23,7 @@
 #include <ui/Region.h>
 
 #include <EGL/egl.h>
+#include <EGL/eglext.h>
 
 #include "DisplayHardware/DisplayHardwareBase.h"
 
@@ -34,6 +35,7 @@ struct copybit_t;
 namespace android {
 
 class EGLDisplaySurface;
+class EGLKMSSurface;
 
 class DisplayHardware : public DisplayHardwareBase
 {
@@ -72,6 +74,11 @@ public:
     uint32_t    getFlags() const;
     void        makeCurrent() const;
 
+    int         authMagic(uint32_t magic) const;
+
+    EGLImageKHR createEGLImage(EGLNativePixmapType pix) const;
+    void        destroyEGLImage(EGLImageKHR img) const;
+
     uint32_t getPageFlipCount() const;
     void getDisplaySurface(copybit_image_t* img) const;
     void getDisplaySurface(GGLSurface* fb) const;
@@ -103,9 +110,12 @@ private:
     PixelFormat     mFormat;
     uint32_t        mFlags;
     mutable Region  mDirty;
-    sp<EGLDisplaySurface> mDisplaySurface;
+    sp<EGLKMSSurface> mDisplaySurface;
     copybit_device_t*     mBlitEngine;
     overlay_control_device_t* mOverlayEngine;
+
+    PFNEGLCREATEIMAGEKHRPROC mCreateImageKHR;
+    PFNEGLDESTROYIMAGEKHRPROC mDestroyImageKHR;
 };
 
 }; // namespace android

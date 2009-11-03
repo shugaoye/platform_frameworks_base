@@ -130,6 +130,8 @@ public:
      * EGL_CONTEXT_LOST error */
     virtual status_t revokeGPU() = 0;
 
+    virtual status_t authGPU(uint32_t magic) = 0;
+
     /* Signal surfaceflinger that there might be some work to do
      * This is an ASYNCHRONOUS call.
      */
@@ -161,7 +163,8 @@ public:
         UNFREEZE_DISPLAY,
         REQUEST_GPU,
         REVOKE_GPU,
-        SIGNAL
+        SIGNAL,
+        AUTH_GPU
     };
 
     virtual status_t    onTransact( uint32_t code,

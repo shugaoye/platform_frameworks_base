@@ -171,6 +171,7 @@ public:
     virtual status_t requestGPU(const sp<IGPUCallback>& callback, 
             gpu_info_t* gpu);
     virtual status_t revokeGPU();
+    virtual status_t authGPU(uint32_t magic);
 
             void                        screenReleased(DisplayID dpy);
             void                        screenAcquired(DisplayID dpy);
@@ -373,6 +374,7 @@ private:
                 int                         mDebugCpu;
                 int                         mDebugFps;
                 int                         mDebugBackground;
+                int                         mDebugEGLImage;
 
                 // these are thread safe
     mutable     Barrier                     mReadyToRunBarrier;

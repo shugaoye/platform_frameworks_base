@@ -27,6 +27,9 @@
 
 #include <pixelflinger/pixelflinger.h>
 
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+
 #include "LayerBitmap.h"
 #include "LayerBase.h"
 #include "Transform.h"
@@ -92,6 +95,11 @@ private:
     inline LayerBitmap&
             backBuffer()        { return getBuffer(1-mFrontBufferIndex); }
 
+    inline EGLImageKHR
+            frontImage()       { return mImages[mFrontBufferIndex]; }
+    inline EGLImageKHR
+            backImage()       { return mImages[1 - mFrontBufferIndex]; }
+
     void reloadTexture(const Region& dirty);
 
     status_t resize(int32_t index, uint32_t w, uint32_t h, const char* what);
@@ -102,6 +110,7 @@ private:
 
             bool            mSecure;
             LayerBitmap     mBuffers[2];
+            EGLImageKHR     mImages[2];
             int32_t         mFrontBufferIndex;
             bool            mNeedsBlending;
             bool            mResizeTransactionDone;

@@ -5,6 +5,7 @@ LOCAL_SRC_FILES:= \
     clz.cpp.arm \
     DisplayHardware/DisplayHardware.cpp \
     DisplayHardware/DisplayHardwareBase.cpp \
+    GPUHardware/GEMHardware.cpp \
     GPUHardware/GPUHardware.cpp \
     BlurFilter.cpp.arm \
     CPUGauge.cpp \
@@ -42,6 +43,10 @@ LOCAL_SHARED_LIBRARIES := \
 
 LOCAL_C_INCLUDES := \
 	$(call include-path-for, corecg graphics)
+LOCAL_C_INCLUDES += \
+		external/drm/shared-core \
+		external/drm/libdrm \
+		external/drm/libdrm/intel
 
 LOCAL_MODULE:= libsurfaceflinger
 

@@ -25,6 +25,7 @@
 #include <ui/Rect.h>
 #include <private/ui/SharedState.h>
 #include <pixelflinger/pixelflinger.h>
+#include <EGL/eglnatives.h>
 
 class copybit_image_t;
 
@@ -38,7 +39,7 @@ class LayerBitmap;
 
 // ---------------------------------------------------------------------------
 
-class LayerBitmap
+class LayerBitmap : public egl_native_pixmap_t
 {
 public:
 
@@ -68,6 +69,8 @@ public:
     size_t size() const;
     const sp<MemoryDealer>& getAllocator() const { return mAllocator; }
     void getBitmapSurface(copybit_image_t* img) const;
+
+    int setCPUDomain(void);
 
 private:
     sp<MemoryDealer>        mAllocator;

@@ -201,6 +201,7 @@ struct egl_native_pixmap_t
     union {
         uint32_t    compressedFormat;
         int32_t     vstride;
+        uint32_t    gem;
     };
     int32_t     reserved;
 };
@@ -214,6 +215,7 @@ struct egl_native_pixmap_t
  */
 
 struct egl_native_window_t* android_createDisplaySurface();
+struct egl_native_window_t* android_createKMSSurface();
 
 /*****************************************************************************/
 

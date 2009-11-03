@@ -29,6 +29,10 @@
 #include <ui/PixelFormat.h>
 #include <ui/EGLDisplaySurface.h>
 
+#define GL_GLEXT_PROTOTYPES
+#include <GLES/gl.h>
+#include <GLES/glext.h>
+
 #include "clz.h"
 #include "Layer.h"
 #include "LayerBitmap.h"
@@ -47,6 +51,9 @@ namespace android {
 const uint32_t Layer::typeInfo = LayerBaseClient::typeInfo | 4;
 const char* const Layer::typeID = "Layer";
 
+static const char *gl_extensions;
+static PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES_func;
+
 // ---------------------------------------------------------------------------
 
 Layer::Layer(SurfaceFlinger* flinger, DisplayID display, Client* c, int32_t i)
@@ -64,6 +71,13 @@ Layer::Layer(SurfaceFlinger* flinger, DisplayID display, Client* c, int32_t i)
 Layer::~Layer()
 {
     client->free(clientIndex());
+
+    const DisplayHardware& hw(graphicPlane(0).displayHardware());
+    for (int i = 0; i < 2; i++) {
+	    if (mImages[i])
+		    hw.destroyEGLImage(mImages[i]);
+    }
+
     // this should always be called from the OpenGL thread
     if (mTextureName != -1U) {
         //glDeleteTextures(1, &mTextureName);
@@ -111,16 +125,22 @@ status_t Layer::setBuffers( Client* client,
     if ((flags & ISurfaceComposer::eGPU) && (mFlinger->getGPU() != 0)) {
         // FIXME: this value should come from the h/w
         alignment = 8; 
+
+	/*
+	 * not needed for i915
+	 *
         // FIXME: this is msm7201A specific, as its GPU only supports
         // BGRA_8888.
         if (format == PIXEL_FORMAT_RGBA_8888) {
             format = PIXEL_FORMAT_BGRA_8888;
         }
+	*/
     }
 
     mSecure = (flags & ISurfaceComposer::eSecure) ? true : false;
     mNeedsBlending = (info.h_alpha - info.l_alpha) > 0;
     sp<MemoryDealer> allocators[2];
+    const DisplayHardware& hw(graphicPlane(0).displayHardware());
     for (int i=0 ; i<2 ; i++) {
         allocators[i] = client->createAllocator(memory_flags);
         if (allocators[i] == 0)
@@ -131,6 +151,9 @@ status_t Layer::setBuffers( Client* client,
             return err;
         mBuffers[i].clear(); // clear the bits for security
         mBuffers[i].getInfo(lcblk->surface + i);
+
+	/* this is not OpenGL thread */
+	mImages[i] = NULL;
     }
 
     mSurface = new Surface(clientIndex(),
@@ -143,13 +166,38 @@ status_t Layer::setBuffers( Client* client,
 
 void Layer::reloadTexture(const Region& dirty)
 {
+    const GGLSurface& t(frontBuffer().surface());
+
     if (UNLIKELY(mTextureName == -1U)) {
         // create the texture name the first time
         // can't do that in the ctor, because it runs in another thread.
         mTextureName = createTexture();
+
+	const DisplayHardware& hw(graphicPlane(0).displayHardware());
+	for (int i = 0; i < 2; i++) {
+		if (!mImages[i] && t.width && t.height && mBuffers[i].gem)
+			mImages[i] = hw.createEGLImage(&mBuffers[i]);
+	}
+
+	if (!gl_extensions) {
+		gl_extensions = (const char*) glGetString(GL_EXTENSIONS);
+		if (gl_extensions && strstr(gl_extensions, "GL_OES_EGL_image")) {
+			/* eglGetProcAddress is not working... */
+			glEGLImageTargetTexture2DOES_func = glEGLImageTargetTexture2DOES;
+		}
+	}
     }
-    const GGLSurface& t(frontBuffer().surface());
-    loadTexture(dirty, mTextureName, t, mTextureWidth, mTextureHeight);
+
+    EGLImageKHR img = frontImage();
+    if (mFlinger->mDebugEGLImage && glEGLImageTargetTexture2DOES_func && img) {
+	    glBindTexture(GL_TEXTURE_2D, mTextureName);
+	    glEGLImageTargetTexture2DOES_func(GL_TEXTURE_2D, (GLeglImageOES) img);
+	    mTextureWidth = t.width;
+	    mTextureHeight = t.height;
+    }
+    else {
+	    loadTexture(dirty, mTextureName, t, mTextureWidth, mTextureHeight);
+    }
 }
 
 
@@ -213,7 +261,14 @@ status_t Layer::reallocateBuffer(int32_t index, uint32_t w, uint32_t h)
 
     status_t err = mBuffers[index].resize(w, h);
     if (err == NO_ERROR) {
+	const DisplayHardware& hw(graphicPlane(0).displayHardware());
         mBuffers[index].getInfo(lcblk->surface + index);
+	if (mImages[index])
+		hw.destroyEGLImage(mImages[index]);
+	if (w && h && mBuffers[index].gem)
+		mImages[index] = hw.createEGLImage(&mBuffers[index]);
+	else
+		mImages[index] = NULL;
     } else {
         LOGE("resizing buffer %d to (%u,%u) failed [%08x] %s",
             index, w, h, err, strerror(err));
@@ -515,6 +570,8 @@ Region Layer::post(uint32_t* previousSate, bool& recomputeVisibleRegions)
         }
     }
 
+    /* the back buffer might be moved to GPU domain when it was a front buffer */
+    backBuffer().setCPUDomain();
     reloadTexture(dirty);
 
     return dirty;

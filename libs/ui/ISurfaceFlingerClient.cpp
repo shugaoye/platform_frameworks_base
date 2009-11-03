@@ -31,6 +31,9 @@
 #include <ui/Point.h>
 #include <ui/Rect.h>
 
+#include <ui/ISurfaceComposer.h>
+#include <utils/MemoryGem.h>
+
 #include <private/ui/LayerState.h>
 
 // ---------------------------------------------------------------------------
@@ -90,6 +93,10 @@ public:
         data.writeInt32(flags);
         remote()->transact(CREATE_SURFACE, data, &reply);
         params->readFromParcel(reply);
+	if (flags & ISurfaceComposer::eGPU) {
+            memory_gem_promote(params->heap[0]);
+            memory_gem_promote(params->heap[1]);
+        }
         return interface_cast<ISurface>(reply.readStrongBinder());
     }
                                     
