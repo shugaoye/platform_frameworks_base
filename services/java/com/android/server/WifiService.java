@@ -268,6 +268,15 @@ public class WifiService extends IWifiManager.Stub {
 
                 }
             },new IntentFilter(ConnectivityManager.ACTION_TETHER_STATE_CHANGED));
+
+        mContext.registerReceiver(
+                new BroadcastReceiver() {
+                    @Override
+                    public void onReceive(Context context, Intent intent) {
+                        processWifiButton();
+                    }
+                },
+                new IntentFilter(Intent.ACTION_WIFI_BUTTON));
     }
 
     /**
@@ -342,6 +351,12 @@ public class WifiService extends IWifiManager.Stub {
             ;
         }
         return (wifiSavedState == 1);
+    }
+
+    private void processWifiButton( ) {
+        if (isAirplaneModeOn() != true) {
+            setWifiEnabled(getWifiEnabledState() == WIFI_STATE_DISABLED);
+        }
     }
 
     private boolean getPersistedWifiEnabled() {
