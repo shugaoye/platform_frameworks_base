@@ -1333,6 +1333,7 @@ class PowerManagerService extends IPowerManager.Stub implements LocalPowerManage
                         Binder.restoreCallingIdentity(identity);
                     }
                     mPowerState &= ~SCREEN_ON_BIT;
+
                     if (!mScreenBrightness.animating) {
                         err = screenOffFinishedAnimatingLocked(becauseOfUser);
                     } else {
@@ -1385,7 +1386,7 @@ class PowerManagerService extends IPowerManager.Stub implements LocalPowerManage
 
         int preferredBrightness = getPreferredBrightness();
         boolean startAnimation = false;
-        
+
         if ((difference & KEYBOARD_BRIGHT_BIT) != 0) {
             if (ANIMATE_KEYBOARD_LIGHTS) {
                 if ((newState & KEYBOARD_BRIGHT_BIT) == 0) {
@@ -1623,7 +1624,7 @@ class PowerManagerService extends IPowerManager.Stub implements LocalPowerManage
                     more = false;
                 }
             }
-            //Log.i(TAG, "Animating brightess " + curIntValue + ": " + mask);
+            //Log.i(TAG, "Animating brightess " + curIntValue + ": " + mask + ":" + more);
             setLightBrightness(mask, curIntValue);
             animating = more;
             if (!more) {

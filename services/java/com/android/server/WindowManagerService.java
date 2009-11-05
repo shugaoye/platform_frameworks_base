@@ -4278,14 +4278,13 @@ public class WindowManagerService extends IWindowManager.Stub implements Watchdo
     public boolean injectKeyEvent(KeyEvent ev, boolean sync) {
         long downTime = ev.getDownTime();
         long eventTime = ev.getEventTime();
-
         int action = ev.getAction();
         int code = ev.getKeyCode();
         int repeatCount = ev.getRepeatCount();
         int metaState = ev.getMetaState();
         int deviceId = ev.getDeviceId();
-        int scancode = ev.getScanCode();
 
+        int scancode = ev.getScanCode();
         if (eventTime == 0) eventTime = SystemClock.uptimeMillis();
         if (downTime == 0) downTime = eventTime;
 
@@ -5166,6 +5165,7 @@ public class WindowManagerService extends IWindowManager.Stub implements Watchdo
                     if (screenIsDim) {
                         event.flags |= WindowManagerPolicy.FLAG_BRIGHT_HERE;
                     }
+
                     if ((actions & WindowManagerPolicy.ACTION_POKE_USER_ACTIVITY) != 0) {
                         mPowerManager.userActivity(event.when, false,
                                 LocalPowerManager.BUTTON_EVENT, false);

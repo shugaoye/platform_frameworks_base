@@ -120,7 +120,8 @@ public class KeyEvent implements Parcelable {
     public static final int KEYCODE_MUTE            = 91;
     public static final int KEYCODE_PAGE_UP         = 92;
     public static final int KEYCODE_PAGE_DOWN       = 93;
-
+    public static final int SCANCODE_WIFI           = 238;
+    public static final int SCANCODE_SLEEP          = 142;
     // NOTE: If you add a new keycode here you must also add it to:
     //  isSystem()
     //  frameworks/base/include/ui/KeycodeLabels.h
@@ -601,6 +602,14 @@ public class KeyEvent implements Parcelable {
         case KEYCODE_FOCUS:
         case KEYCODE_SEARCH:
             return true;
+        case KEYCODE_UNKNOWN:
+            switch (mScancode) {
+            case SCANCODE_WIFI:
+            case SCANCODE_SLEEP:
+                return true;
+            default:
+                return false;
+            }
         default:
             return false;
         }

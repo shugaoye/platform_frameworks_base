@@ -251,9 +251,27 @@ public class WifiService extends IWifiManager.Stub {
                 },
                 new IntentFilter(Intent.ACTION_AIRPLANE_MODE_CHANGED));
 
+        mContext.registerReceiver(
+                new BroadcastReceiver() {
+                    @Override
+                    public void onReceive(Context context, Intent intent) {
+                        processWifiButton();
+                    }
+                },
+                new IntentFilter(Intent.ACTION_WIFI_BUTTON));
+
         setWifiEnabledBlocking(wifiEnabled, false, Process.myUid());
     }
 
+    private void processWifiButton( ) {
+        if (isAirplaneModeOn() != true) {
+            if (getWifiEnabledState() == WIFI_STATE_DISABLED) {
+                setWifiEnabledBlocking(true,false,Process.myUid());
+            } else {
+                setWifiEnabledBlocking(false,false,Process.myUid());
+            }
+        }
+    }
     /**
      * Initializes the hidden networks state. Must be called when we
      * enable Wi-Fi.

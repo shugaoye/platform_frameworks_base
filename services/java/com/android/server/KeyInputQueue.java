@@ -274,10 +274,10 @@ public abstract class KeyInputQueue {
                         final int scancode = ev.scancode;
                         send = false;
                         
-			if(false){
-			    Log.i(TAG, "Device class : " + classes + "; Event type: " + type +
-				  "; Scancode: " + scancode + " Value: " + ev.value + "; keycode: " + ev.keycode);
-			}
+                        if(false){
+                            Log.i(TAG, "Device class : " + classes + "; Event type: " + type +
+                            "; Scancode: " + scancode + " Value: " + ev.value + "; keycode: " + ev.keycode);
+                        }
 			// Is it a key event?
                         if (type == RawInputEvent.EV_KEY &&
                                 (classes&RawInputEvent.CLASS_KEYBOARD) != 0 &&
@@ -345,7 +345,7 @@ public abstract class KeyInputQueue {
                                 di.mAbs.size = ev.value;
                             }
                         } else if (ev.type == RawInputEvent.EV_REL ) {
-			    if ((classes&RawInputEvent.CLASS_TRACKBALL) != 0) {
+                            if ((classes&RawInputEvent.CLASS_TRACKBALL) != 0) {
                                 // Add this relative movement into our totals.
                                 if (ev.scancode == RawInputEvent.REL_X) {
                                     di.mRel.changed = true;
