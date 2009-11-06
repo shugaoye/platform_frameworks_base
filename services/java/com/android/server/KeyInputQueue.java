@@ -356,12 +356,12 @@ public abstract class KeyInputQueue {
                                 }
                             } else if ((classes&RawInputEvent.CLASS_MOUSE) != 0) {
 				// Log.i(TAG, "Reaches Mouse X,Y code");
-				if (ev.scancode == RawInputEvent.REL_X) {
+				if (ev.scancode == RawInputEvent.REL_X && mDisplay != null) {
 				    di.mAbs.changed = true;
 				    mCx = mCx + (int)ev.value;
 				    mCx = ((mCx < 0) ? 0 :(mCx >= mDisplay.getWidth() ?(mDisplay.getWidth()-1):mCx));
 				    di.mAbs.x = mCx;
-				} else if (ev.scancode == RawInputEvent.REL_Y) {
+				} else if (ev.scancode == RawInputEvent.REL_Y && mDisplay != null) {
 				    di.mAbs.changed = true;
 				    mCy = mCy + (int)ev.value;
 				    mCy = ((mCy < 0) ? 0 :(mCy >= mDisplay.getHeight()?(mDisplay.getHeight() - 1):mCy));
