@@ -593,21 +593,41 @@ public class ConnectivityService extends IConnectivityManager.Stub {
         NetworkInfo mobileInfo = mMobileDataStateTracker.getNetworkInfo();
         NetworkInfo ethInfo = mEthernetStateTracker.getNetworkInfo();
         int connected = 0 , i;
-        if (wifiInfo.isConnected()) connected++;
-        if (mobileInfo.isConnected()) connected++;
-        if (ethInfo.isConnected()) connected++;
+        if (wifiInfo.isConnected())
+            connected++;
+        if (mobileInfo.isConnected())
+            connected++;
+        if (ethInfo.isConnected())
+            connected++;
         if (connected >=2 ) {
             deadnet = new NetworkStateTracker[2];
 			switch (mNetworkPreference) {
 				case ConnectivityManager.TYPE_WIFI:
-					deadnet[0] = mMobileDataStateTracker;
-					deadnet[1] = mEthernetStateTracker;
+                    if (wifiInfo.isConnected()) {
+                        deadnet[0] = mMobileDataStateTracker;
+                        deadnet[1] = mEthernetStateTracker;
+                    } else {
+                        deadnet[0] = mMobileDataStateTracker;
+                        deadnet[1] = null;
+                    }
+                    break;
 				case ConnectivityManager.TYPE_MOBILE:
-					deadnet[0] = mWifiStateTracker;
-					deadnet[1] = mEthernetStateTracker;
+                    if (mobileInfo.isConnected()) {
+                        deadnet[0] = mWifiStateTracker;
+                        deadnet[1] = mEthernetStateTracker;
+                    } else {
+                        deadnet[0] = mWifiStateTracker;
+                        deadnet[1] = null;
+                    }
+                    break;
 				case ConnectivityManager.TYPE_ETH:
-					deadnet[0] = mWifiStateTracker;
-					deadnet[1] = mMobileDataStateTracker;
+                    if (ethInfo.isConnected()) {
+                        deadnet[0] = mWifiStateTracker;
+                        deadnet[1] = mMobileDataStateTracker;
+                    } else {
+                        deadnet[0] = mMobileDataStateTracker;;
+                        deadnet[1] = null;
+                    }
             }
         }
 
@@ -615,30 +635,38 @@ public class ConnectivityService extends IConnectivityManager.Stub {
         thisNet.setTeardownRequested(false);
         if (!mTestMode && deadnet != null) {
             for (i = 0 ; i < 2; i ++) {
-		if (DBG) Log.v(TAG, "Policy requires " +
-		   deadnet[i].getNetworkInfo().getTypeName() + " teardown");
-		toredown = teardown(deadnet[i]);
-		if (DBG && !toredown) {
-			 Log.d(TAG, "Network declined teardown request");
-				}
-            }
+                if (deadnet[i] != null) {
+                    if (DBG) Log.v(TAG, "Policy requires " +
+                            deadnet[i].getNetworkInfo().getTypeName() 
+                            + " teardown");
+                    toredown = teardown(deadnet[i]);
+       	            if (DBG && !toredown) {
+		                 Log.d(TAG, "Network declined teardown request");
+    				}
+                }
+            }   
         }
 
         /*
-         * Note that if toredown is true, deadnet cannot be null, so there is
+         * Note that if toredown is true, deadnet[0] cannot be null, so there is
          * no danger of a null pointer exception here..
          */
-        if (!toredown || (deadnet[0].getNetworkInfo().getType() != info.getType() &&
-                          deadnet[1].getNetworkInfo().getType() != info.getType())) {
+        if (!toredown || 
+            ((deadnet[0].getNetworkInfo().getType() != info.getType() &&
+             (deadnet[1] == null || 
+              deadnet[1].getNetworkInfo().getType() != info.getType())))) {
             mActiveNetwork = thisNet;
-            if (DBG) Log.v(TAG, "Sending CONNECT bcast for " + info.getTypeName());
+            if (DBG) 
+               Log.v(TAG, "Sending CONNECT bcast for " + info.getTypeName());
             thisNet.updateNetworkSettings();
             sendConnectedBroadcast(info);
             if (isFailover) {
                 otherNet.releaseWakeLock();
             }
         } else {
-            if (DBG) Log.v(TAG, "Not broadcasting CONNECT_ACTION to torn down network " +
+            if (DBG) 
+                Log.v(TAG, 
+                "Not broadcasting CONNECT_ACTION to torn down network " +
                 info.getTypeName());
         }
     }
