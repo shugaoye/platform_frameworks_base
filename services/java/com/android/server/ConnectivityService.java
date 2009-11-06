@@ -602,7 +602,7 @@ public class ConnectivityService extends IConnectivityManager.Stub {
         if (connected >=2 ) {
             deadnet = new NetworkStateTracker[2];
 			switch (mNetworkPreference) {
-				case ConnectivityManager.TYPE_WIFI:
+                case ConnectivityManager.TYPE_WIFI:
                     if (wifiInfo.isConnected()) {
                         deadnet[0] = mMobileDataStateTracker;
                         deadnet[1] = mEthernetStateTracker;
@@ -611,7 +611,7 @@ public class ConnectivityService extends IConnectivityManager.Stub {
                         deadnet[1] = null;
                     }
                     break;
-				case ConnectivityManager.TYPE_MOBILE:
+                case ConnectivityManager.TYPE_MOBILE:
                     if (mobileInfo.isConnected()) {
                         deadnet[0] = mWifiStateTracker;
                         deadnet[1] = mEthernetStateTracker;
@@ -620,7 +620,7 @@ public class ConnectivityService extends IConnectivityManager.Stub {
                         deadnet[1] = null;
                     }
                     break;
-				case ConnectivityManager.TYPE_ETH:
+                case ConnectivityManager.TYPE_ETH:
                     if (ethInfo.isConnected()) {
                         deadnet[0] = mWifiStateTracker;
                         deadnet[1] = mMobileDataStateTracker;
