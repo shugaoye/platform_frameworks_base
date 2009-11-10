@@ -18,6 +18,9 @@ package com.android.server.status;
 
 import android.app.StatusBarManager;
 import android.content.Context;
+import android.content.BroadcastReceiver;
+import android.content.IntentFilter;
+import android.content.Intent;
 import android.os.Binder;
 import android.os.Handler;
 import android.os.IBinder;
@@ -43,11 +46,28 @@ public class TouchFeature {
 	private Context mContext;
 	private StatusBarService mService;
 	private final Display mDisplay;
+	private BootReceiver mBootReceiver;
+	private IntentFilter mIntentFilter;
+
+	private class BootReceiver extends BroadcastReceiver {
+		@Override
+		public void onReceive(Context context, Intent intent) {
+			if (intent.getAction().equals(Intent.ACTION_BOOT_COMPLETED)) {
+				Toast.makeText(context,
+					"Click the right corner of the status bar to enable or disable\nHome/Menu/Back touch features",
+                                        Toast.LENGTH_LONG).show();
+				return;
+			}
+		}
+	}
 
 	protected TouchFeature(Context context){
 		mContext = context;
 		mToken = new Binder();
 		mHandler = new Handler();
+		mIntentFilter = new IntentFilter(Intent.ACTION_BOOT_COMPLETED);
+		mBootReceiver = new BootReceiver();
+		mContext.registerReceiver(mBootReceiver, mIntentFilter);
 		mDisplay = ((WindowManager)context.getSystemService(
 			Context.WINDOW_SERVICE)).getDefaultDisplay();
 		mScreenWidth = mDisplay.getWidth();
@@ -55,9 +75,9 @@ public class TouchFeature {
 
 	// ================================================================================
 	// Add to do key "menu" "home" "back" function
-	// Touch the right corner of the screen on the statusBar to enable/disable the function
-	// Menu: Click/Touch the statusBar
-	// Home: Touch the statusBar from left to right
+	// Touch the right corner of the statusBar to enable/disable the function
+	// Home: Click/Touch the statusBar
+	// Menu: Touch the statusBar from left to right
 	// Back: Touch the statusBar from right to left
 	// ================================================================================
 	protected void adjust(StatusBarService service, MotionEvent event){
