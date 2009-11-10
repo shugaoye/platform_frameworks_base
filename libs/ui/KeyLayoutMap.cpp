@@ -154,7 +154,7 @@ KeyLayoutMap::load(const char* filename)
             case FLAG:
                 if (token == "key") {
                     if (scancode != -1) {
-                        //LOGI("got key decl scancode=%d keycode=%d"
+                        //      LOGI("got key decl scancode=%d keycode=%d"
                         //       " flags=0x%08x\n", scancode, keycode, flags);
                         Key k = { keycode, flags };
                         m_keys.add(scancode, k);
@@ -210,7 +210,7 @@ KeyLayoutMap::map(int32_t scancode, int32_t *keycode, uint32_t *flags) const
     *flags = k.flags;
 
     //LOGD("mapped scancode=%d to keycode=%d flags=0x%08x\n", scancode,
-    //        keycode, flags);
+    //        *keycode, *flags);
 
     return NO_ERROR;
 }
