@@ -266,9 +266,9 @@ public class WifiService extends IWifiManager.Stub {
     private void processWifiButton( ) {
         if (isAirplaneModeOn() != true) {
             if (getWifiEnabledState() == WIFI_STATE_DISABLED) {
-                setWifiEnabledBlocking(true,false,Process.myUid());
+                setWifiEnabled(true);
             } else {
-                setWifiEnabledBlocking(false,false,Process.myUid());
+                setWifiEnabled(false);
             }
         }
     }
