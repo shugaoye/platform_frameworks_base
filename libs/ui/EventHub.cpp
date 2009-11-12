@@ -617,34 +617,27 @@ int EventHub::open_device(const char *deviceName)
 
     if ((device->classes&CLASS_KEYBOARD) != 0) {
         char devname[101];
-        char tmpfn[101];
         char keylayoutFilename[300];
 
         // a more descriptive name
         ioctl(mFDs[mFDCount].fd, EVIOCGNAME(sizeof(devname)-1), devname);
         devname[sizeof(devname)-1] = 0;
-        device->name = devname;
 
-        // replace all the spaces with underscores
-        strcpy(tmpfn, devname);
-        for (char *p = strchr(tmpfn, ' '); p && *p; p = strchr(tmpfn, ' '))
-            *p = '_';
-
-        // find the .kl file we need for this device
         const char* root = getenv("ANDROID_ROOT");
+        char keylayout[PROPERTY_VALUE_MAX];
+        property_get("persist.sys.keylayout", keylayout, "qwerty");
         snprintf(keylayoutFilename, sizeof(keylayoutFilename),
-                 "%s/usr/keylayout/%s.kl", root, tmpfn);
+                 "%s/usr/keylayout/%s.kl", root, keylayout);
+        strcpy(devname, keylayout);
         bool defaultKeymap = false;
+        LOGI("1:devname = %s, keylayout =%s, keylayoutFilename = %s,", devname, keylayout, keylayoutFilename);
         if (access(keylayoutFilename, R_OK)) {
             snprintf(keylayoutFilename, sizeof(keylayoutFilename),
-#ifdef __i386__
-#define DEFAULT_KEYLAYOUT "AT_Translated_Set_2_keyboard.kl"
-#else
-#define DEFAULT_KEYLAYOUT "qwerty.kl"
-#endif
-                     "%s/usr/keylayout/%s", root, DEFAULT_KEYLAYOUT);
+                     "%s/usr/keylayout/%s", root, "qwerty.kl");
+            strcpy(devname, "qwerty");
             defaultKeymap = true;
         }
+        LOGI("2:devname = %s, keylayout =%s, keylayoutFilename = %s,", devname, keylayout, keylayoutFilename);
         device->layoutMap->load(keylayoutFilename);
 
         // tell the world about the devname (the descriptive name)
@@ -655,6 +648,7 @@ int EventHub::open_device(const char *deviceName)
             // this device better not go away.
             mHaveFirstKeyboard = true;
             mFirstKeyboardId = device->id;
+            LOGI("mFirstKeyboardId = %d,", mFirstKeyboardId);
         } else {
             publicID = device->id;
             // ensure mFirstKeyboardId is set to -something-.
