@@ -684,27 +684,23 @@ int EventHub::open_device(const char *deviceName)
 #endif
 
     if ((device->classes&CLASS_KEYBOARD) != 0) {
-        char tmpfn[sizeof(name)];
+        char devname[sizeof(name)];
         char keylayoutFilename[300];
+        char keylayout[PROPERTY_VALUE_MAX];
 
-        // a more descriptive name
-        device->name = name;
-
-        // replace all the spaces with underscores
-        strcpy(tmpfn, name);
-        for (char *p = strchr(tmpfn, ' '); p && *p; p = strchr(tmpfn, ' '))
-            *p = '_';
-
-        // find the .kl file we need for this device
         const char* root = getenv("ANDROID_ROOT");
+        property_get("persist.sys.keylayout", keylayout, "qwerty");
         snprintf(keylayoutFilename, sizeof(keylayoutFilename),
-                 "%s/usr/keylayout/%s.kl", root, tmpfn);
-        bool defaultKeymap = false;
-        if (access(keylayoutFilename, R_OK)) {
+                 "%s/usr/keylayout/%s.kl", root, keylayout);
+        strcpy(devname, keylayout);
+        bool defaultKeymap = access(keylayoutFilename, R_OK);
+        if (defaultKeymap) {
             snprintf(keylayoutFilename, sizeof(keylayoutFilename),
-                     "%s/usr/keylayout/%s", root, "qwerty.kl");
-            defaultKeymap = true;
+                     "%s/usr/keylayout/%s.kl", root, "qwerty");
+            strcpy(devname, "qwerty");
         }
+        LOGI("devname = %s, keylayout =%s, keylayoutFilename = %s",
+                devname, keylayout, keylayoutFilename);
         device->layoutMap->load(keylayoutFilename);
 
         // tell the world about the devname (the descriptive name)
@@ -724,7 +720,7 @@ int EventHub::open_device(const char *deviceName)
         }
         char propName[100];
         sprintf(propName, "hw.keyboards.%u.devname", publicID);
-        property_set(propName, name);
+        property_set(propName, devname);
 
         // 'Q' key support = cheap test of whether this is an alpha-capable kbd
         if (hasKeycode(device, kKeyCodeQ)) {
@@ -741,7 +737,7 @@ int EventHub::open_device(const char *deviceName)
         }
         
         LOGI("New keyboard: publicID=%d device->id=0x%x devname='%s' propName='%s' keylayout='%s'\n",
-                publicID, device->id, name, propName, keylayoutFilename);
+                publicID, device->id, devname, propName, keylayoutFilename);
     }
 
     LOGI("New device: path=%s name=%s id=0x%x (of 0x%x) index=%d fd=%d classes=0x%x\n",
