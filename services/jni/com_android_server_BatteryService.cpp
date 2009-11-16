@@ -136,8 +136,15 @@ static void android_server_BatteryService_update(JNIEnv* env, jobject obj)
   env->SetBooleanField(obj,gFieldIds.mUsbOnline,
                     gBss->is_usb_online()==1 ?true:false);
   env->SetBooleanField(obj,gFieldIds.mBatteryPresent,
-                    gBss->is_usb_online()==1 ?true:false);
+                    gBss->is_bat_present()==1 ?true:false);
 
+  if ((!gBss->is_ac_online()) && (!gBss->is_usb_online()) &&
+      (!gBss->is_bat_present())) {
+      /*
+       * Most likely this is a desktop PC.
+       */
+      env->SetBooleanField(obj,gFieldIds.mAcOnline, true);
+  }
 
   env->SetIntField(obj,gFieldIds.mBatteryLevel,gBss->get_bat_level());
   env->SetIntField(obj,gFieldIds.mBatteryVoltage,gBss->get_bat_voltage());
