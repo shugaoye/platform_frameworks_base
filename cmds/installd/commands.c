@@ -108,14 +108,17 @@ int delete_cache(const char *pkgname)
     return delete_dir_contents(cachedir, 0, 0);
 }
 
-static int disk_free()
+static int disk_free(long *bsize, long *bavail)
 {
     struct statfs sfs;
     if (statfs(PKG_DIR_PREFIX, &sfs) == 0) {
-        return sfs.f_bavail * sfs.f_bsize;
+        *bsize = sfs.f_bsize;
+        *bavail = sfs.f_bavail;
     } else {
+        LOGE("Can not stat %s", PKG_DIR_PREFIX);
         return -1;
     }
+    return 0;
 }
 
 /* Try to ensure free_size bytes of storage are available.
@@ -125,18 +128,19 @@ static int disk_free()
  * also require that apps constantly modify file metadata even
  * when just reading from the cache, which is pretty awful.
  */
-int free_cache(int free_size)
+int free_cache(size_t free_size)
 {
     const char *name;
     int dfd, subfd;
     DIR *d;
     struct dirent *de;
-    int avail;
+    long bsz, bavail;
+    unsigned long long avail;
 
-    avail = disk_free();
-    if (avail < 0) return -1;
+    if (disk_free(&bsz, &bavail) < 0)
+        return -1;
+    avail = bsz * bavail;
 
-    LOGI("free_cache(%d) avail %d\n", free_size, avail);
     if (avail >= free_size) return 0;
 
     d = opendir(PKG_DIR_PREFIX);
@@ -161,13 +165,22 @@ int free_cache(int free_size)
 
         delete_dir_contents_fd(subfd, "cache");
         close(subfd);
-
-        avail = disk_free();
+        if (disk_free(&bsz, &bavail) < 0) {
+            /*
+             * let it continue and hope we could success next time.
+             * maybe :-)
+             */
+            LOGI("Can not get the fs size");
+            continue;
+        }
+        avail = bsz * bavail;
         if (avail >= free_size) {
+            LOGI("Get more space");
             closedir(d);
             return 0;
         }
     }
+    LOGI("Can not find free space %d", free_size);
     closedir(d);
 
     /* Fail case - not possible to free space */
