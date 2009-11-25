@@ -92,7 +92,7 @@ private:
 	    uint32_t handle;
 	    size_t size;
 	    int width, height;
-	    int stride;
+	    int pitch;
 	    int bpp;
 	    int format;
 	    char *base;

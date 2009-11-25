@@ -98,7 +98,7 @@ EGLKMSSurface::EGLKMSSurface()
         egl_native_window_t::width  = mFb[1 - mIndex].width;
         egl_native_window_t::height = mFb[1 - mIndex].height;
         egl_native_window_t::stride =
-		mFb[1 - mIndex].stride / (mFb[1 - mIndex].bpp / 8);
+		mFb[1 - mIndex].pitch / (mFb[1 - mIndex].bpp / 8);
         egl_native_window_t::format = mFb[1 - mIndex].format;
 #if AGL_SUPPORT
         egl_native_window_t::base   = intptr_t(mFb[0].base);
@@ -414,14 +414,23 @@ status_t EGLKMSSurface::addFb(int fd)
 #if AGL_SUPPORT
 		struct drm_i915_gem_mmap gmap;
 #endif
-		int ret;
+		int pitch, ret;
+		size_t size;
 
 		mFb[i].width = mMode->hdisplay;
 		mFb[i].height = mMode->vdisplay;
 		mFb[i].format = GGL_PIXEL_FORMAT_RGB_565;
 		mFb[i].bpp = bytesPerPixel(mFb[i].format) * 8;
-		mFb[i].stride = mFb[i].width * mFb[i].bpp / 8;
-		mFb[i].size = mFb[i].stride * mFb[i].height;
+
+		pitch = mFb[i].width * mFb[i].bpp / 8;
+		/* align to 64 bytes */
+		pitch = (pitch + 63) & ~63;
+		size = pitch * mFb[i].height;
+		/* align to page size */
+		size = (size + 4095) & ~4095;
+
+		mFb[i].pitch = pitch;
+		mFb[i].size = size;
 
 		memset(&create, 0, sizeof(create));
 		memset(&flink, 0, sizeof(flink));
@@ -455,7 +464,7 @@ status_t EGLKMSSurface::addFb(int fd)
 #endif
 
 		ret = drmModeAddFB(fd, mFb[i].width, mFb[i].height,
-				mFb[i].bpp, mFb[i].bpp, mFb[i].stride,
+				mFb[i].bpp, mFb[i].bpp, mFb[i].pitch,
 				mFb[i].handle, &mFb[i].id);
 		if (ret) {
 			LOGE("failed to add frame buffer");
@@ -561,13 +570,13 @@ status_t EGLKMSSurface::mapFrameBuffer()
 	     "size      = %d\n"
 	     "width     = %d\n"
 	     "height    = %d\n"
-	     "stride    = %d\n"
+	     "pitch     = %d\n"
 	     "bpp       = %d\n",
 	     mFb[0].id, mFb[1].id,
 	     mFb[0].name, mFb[1].name,
 	     mFb[0].handle, mFb[1].handle,
 	     mFb[0].size, mFb[0].width, mFb[0].height,
-	     mFb[0].stride, mFb[0].bpp);
+	     mFb[0].pitch, mFb[0].bpp);
 
 	mFlags = PAGE_FLIP;
 	mIndex = 0;
