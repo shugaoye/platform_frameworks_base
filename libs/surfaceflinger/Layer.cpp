@@ -124,7 +124,7 @@ status_t Layer::setBuffers( Client* client,
 
     if ((flags & ISurfaceComposer::eGPU) && (mFlinger->getGPU() != 0)) {
         // FIXME: this value should come from the h/w
-        alignment = 8; 
+        alignment = 1;
 
 	/*
 	 * not needed for i915
