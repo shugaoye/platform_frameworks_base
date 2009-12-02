@@ -22,14 +22,9 @@ import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.WindowManagerPolicy;
 
-import java.io.FileInputStream;
-import java.util.StringTokenizer;
-
 public class InputDevice {
     /** Amount that trackball needs to move in order to generate a key event. */
     static final int TRACKBALL_MOVEMENT_THRESHOLD = 6;
-
-    static final String CALIBRATION_FILE = "/system/etc/pointercal";
 
     final int id;
     final int classes;
@@ -38,7 +33,6 @@ public class InputDevice {
     final AbsoluteInfo absY;
     final AbsoluteInfo absPressure;
     final AbsoluteInfo absSize;
-    final TransformInfo tInfo;
     
     long mDownTime = 0;
     int mMetaKeysState = 0;
@@ -46,7 +40,7 @@ public class InputDevice {
     final MotionState mAbs = new MotionState(0, 0);
     final MotionState mRel = new MotionState(TRACKBALL_MOVEMENT_THRESHOLD,
             TRACKBALL_MOVEMENT_THRESHOLD);
-
+    
     static class MotionState {
         int xPrecision;
         int yPrecision;
@@ -61,7 +55,7 @@ public class InputDevice {
         int y = 0;
         int pressure = 1;
         int size = 0;
-
+        
         MotionState(int mx, int my) {
             xPrecision = mx;
             yPrecision = my;
@@ -75,7 +69,7 @@ public class InputDevice {
             if (!changed) {
                 return null;
             }
-
+            
             float scaledX = x;
             float scaledY = y;
             float temp;
@@ -92,21 +86,11 @@ public class InputDevice {
                     h = tmp;
                 }
                 if (device.absX != null) {
-                    if (device.tInfo != null)
-                        scaledX = (device.tInfo.x1 * x +
-                                   device.tInfo.y1 * y +
-                                   device.tInfo.z1) / device.tInfo.s;
-                    else
-                        scaledX = ((scaledX-device.absX.minValue)
+                    scaledX = ((scaledX-device.absX.minValue)
                                 / device.absX.range) * w;
                 }
                 if (device.absY != null) {
-                    if (device.tInfo != null)
-                        scaledY = (device.tInfo.x2 * x +
-                                   device.tInfo.y2 * y +
-                                   device.tInfo.z2) / device.tInfo.s;
-                    else
-                        scaledY = ((scaledY-device.absY.minValue)
+                    scaledY = ((scaledY-device.absY.minValue)
                                 / device.absY.range) * h;
                 }
                 if (device.absPressure != null) {
@@ -214,17 +198,7 @@ public class InputDevice {
         int flat;
         int fuzz;
     };
-
-    static class TransformInfo {
-        float x1;
-        float y1;
-        float z1;
-        float x2;
-        float y2;
-        float z2;
-        float s;
-    };
-
+    
     InputDevice(int _id, int _classes, String _name,
             AbsoluteInfo _absX, AbsoluteInfo _absY,
             AbsoluteInfo _absPressure, AbsoluteInfo _absSize) {
@@ -235,34 +209,5 @@ public class InputDevice {
         absY = _absY;
         absPressure = _absPressure;
         absSize = _absSize;
-        TransformInfo t = null;
-        try {
-            FileInputStream is = new FileInputStream(CALIBRATION_FILE);
-            byte[] mBuffer = new byte[64];
-            int len = is.read(mBuffer);
-            is.close();
-            if (len > 0) {
-                int i;
-                for (i = 0 ; i < len ; i++) {
-                    if (mBuffer[i] == '\n' || mBuffer[i] == 0) {
-                        break;
-                    }
-                }
-                len = i;
-            }
-            StringTokenizer st = new StringTokenizer( new String(mBuffer, 0, 0, len) );
-
-            t = new TransformInfo ();
-            t.x1 = Integer.parseInt( st.nextToken() );
-            t.y1 = Integer.parseInt( st.nextToken() );
-            t.z1 = Integer.parseInt( st.nextToken() );
-            t.x2 = Integer.parseInt( st.nextToken() );
-            t.y2 = Integer.parseInt( st.nextToken() );
-            t.z2 = Integer.parseInt( st.nextToken() );
-            t.s  = Integer.parseInt( st.nextToken() );
-        } catch (java.io.FileNotFoundException e) {
-        } catch (java.io.IOException e) {
-        }
-        tInfo = t;
     }
 };
