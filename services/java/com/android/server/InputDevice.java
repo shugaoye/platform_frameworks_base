@@ -29,7 +29,7 @@ public class InputDevice {
     /** Amount that trackball needs to move in order to generate a key event. */
     static final int TRACKBALL_MOVEMENT_THRESHOLD = 6;
 
-    static final String CALIBRATION_FILE = "/system/etc/pointercal";
+    static final String CALIBRATION_FILE = "/data/system/tslib/pointercal";
 
     final int id;
     final int classes;
