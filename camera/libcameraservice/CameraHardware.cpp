@@ -1,5 +1,6 @@
 /*
 **
+** Copyright (C) 2009 0xlab.org - http://0xlab.org/
 ** Copyright 2008, The Android Open Source Project
 **
 ** Licensed under the Apache License, Version 2.0 (the "License");
@@ -19,14 +20,22 @@
 #include <utils/Log.h>
 
 #include "CameraHardware.h"
+#include "converter.h"
 #include <fcntl.h>
 #include <sys/mman.h>
 
 #define VIDEO_DEVICE        "/dev/video0"
-#define MIN_WIDTH           640
-
-#define MIN_HEIGHT          480
+#define PREVIEW_WIDTH           352
+#define PREVIEW_HEIGHT          288
+#define PICTURE_WIDTH       1600   /* 2MP */
+#define PICTURE_HEIGHT      1200   /* 2MP */
 #define PIXEL_FORMAT        V4L2_PIX_FMT_YUYV
+
+#include <cutils/properties.h>
+#ifndef UNLIKELY
+#define UNLIKELY(exp) (__builtin_expect( (exp) != 0, false ))
+#endif
+static int mDebugFps = 0;
 
 namespace android {
 
@@ -37,7 +46,10 @@ CameraHardware::CameraHardware()
                     mHeap(0),
                     mPreviewHeap(0),
                     mRawHeap(0),
-					mPreviewFrameSize(0),
+                    mPreviewFrameSize(0),
+                    mRecordingFrameSize(0),
+                    mRecordingCallback(0),
+                    mRecordingCallbackCookie(0),
                     mRawPictureCallback(0),
                     mJpegPictureCallback(0),
                     mPictureCallbackCookie(0),
@@ -45,24 +57,28 @@ CameraHardware::CameraHardware()
                     mPreviewCallbackCookie(0),
                     mAutoFocusCallback(0),
                     mAutoFocusCallbackCookie(0),
-                    mCurrentPreviewFrame(0),
-                    previewStopped(true),
-                    nQueued(0),
-                    nDequeued(0)
+                    previewStopped(true)
 {
     initDefaultParameters();
+    /* whether prop "debug.camera.showfps" is enabled or not */
+    char value[PROPERTY_VALUE_MAX];
+    property_get("debug.camera.showfps", value, "0");
+    mDebugFps = atoi(value);
+    LOGD_IF(mDebugFps, "showfps enabled");
 }
 
 void CameraHardware::initDefaultParameters()
 {
     CameraParameters p;
 
-    p.setPreviewSize(MIN_WIDTH, MIN_HEIGHT);
-    p.setPreviewFrameRate(15);
+    p.setPreviewSize(PREVIEW_WIDTH, PREVIEW_HEIGHT);
+    p.setPreviewFrameRate(DEFAULT_FRAME_RATE);
     p.setPreviewFormat("yuv422sp");
-
-    p.setPictureSize(MIN_WIDTH, MIN_HEIGHT);
     p.setPictureFormat("jpeg");
+    p.setPictureSize(PREVIEW_WIDTH, PREVIEW_HEIGHT);
+
+    p.set("jpeg-quality", "100"); // maximum quality
+    p.set("picture-size-values", "1600x1200,1024x768,640x480,352x288");
 
     if (setParameters(p) != NO_ERROR) {
         LOGE("Failed to set default parameters?!");
@@ -76,7 +92,7 @@ CameraHardware::~CameraHardware()
 
 sp<IMemoryHeap> CameraHardware::getPreviewHeap() const
 {
-    return mHeap;
+    return mPreviewHeap;
 }
 
 sp<IMemoryHeap> CameraHardware::getRawHeap() const
@@ -85,13 +101,59 @@ sp<IMemoryHeap> CameraHardware::getRawHeap() const
 }
 
 // ---------------------------------------------------------------------------
+static void showFPS(const char *tag)
+{
+    static int mFrameCount = 0;
+    static int mLastFrameCount = 0;
+    static nsecs_t mLastFpsTime = 0;
+    static float mFps = 0;
+    mFrameCount++;
+    if (!(mFrameCount & 0x1F)) {
+        nsecs_t now = systemTime();
+        nsecs_t diff = now - mLastFpsTime;
+        mFps =  ((mFrameCount - mLastFrameCount) * float(s2ns(1))) / diff;
+        mLastFpsTime = now;
+        mLastFrameCount = mFrameCount;
+        LOGD("[%s] %d Frames, %f FPS", tag, mFrameCount, mFps);
+    }
+}
 
 int CameraHardware::previewThread()
 {
+    Mutex::Autolock lock(mPreviewLock);
     if (!previewStopped) {
-        // Get preview frame
-        camera.GrabPreviewFrame(mHeap->getBase());
-        mPreviewCallback(mBuffer, mPreviewCallbackCookie);
+
+        camera.GrabRawFrame(mRawHeap->getBase());
+
+        if (mRecordingCallback) {
+            yuyv422_to_yuv420sp((unsigned char *)mRawHeap->getBase(),
+                              (unsigned char *)mRecordingHeap->getBase(),
+                              PREVIEW_WIDTH, PREVIEW_HEIGHT);
+            nsecs_t timeStamp = systemTime(SYSTEM_TIME_MONOTONIC);
+            mRecordingCallback(timeStamp, mRecordingBuffer, mRecordingCallbackCookie);
+
+            camera.convert((unsigned char *) mRawHeap->getBase(),
+                           (unsigned char *) mPreviewHeap->getBase(),
+                           PREVIEW_WIDTH, PREVIEW_HEIGHT);
+
+            if (UNLIKELY(mDebugFps)) {
+                showFPS("Recording");
+            }
+        }
+        else {
+            camera.convert((unsigned char *) mRawHeap->getBase(),
+                           (unsigned char *) mPreviewHeap->getBase(),
+                           PREVIEW_WIDTH, PREVIEW_HEIGHT);
+
+            yuyv422_to_yuv420((unsigned char *)mRawHeap->getBase(),
+                              (unsigned char *)mHeap->getBase(),
+                              PREVIEW_WIDTH, PREVIEW_HEIGHT);
+            mPreviewCallback(mBuffer, mPreviewCallbackCookie);
+
+            if (UNLIKELY(mDebugFps)) {
+                showFPS("Preview");
+            }
+        }
     }
 
     return NO_ERROR;
@@ -104,15 +166,28 @@ status_t CameraHardware::startPreview(preview_callback cb, void* user)
     Mutex::Autolock lock(mLock);
     if (mPreviewThread != 0) {
         //already running
+        LOGD("startPreview:  but already running");
         return INVALID_OPERATION;
     }
 
-    camera.Open(VIDEO_DEVICE, MIN_WIDTH, MIN_HEIGHT, PIXEL_FORMAT);
+    if (camera.Open(VIDEO_DEVICE, PREVIEW_WIDTH, PREVIEW_HEIGHT, PIXEL_FORMAT) < 0) {
+	LOGE("startPreview failed: cannot open device.");
+        return UNKNOWN_ERROR;
+    }
 
-    mPreviewFrameSize = MIN_WIDTH * MIN_HEIGHT * 2;
+    mPreviewFrameSize = PREVIEW_WIDTH * PREVIEW_HEIGHT * 2;
 
     mHeap = new MemoryHeapBase(mPreviewFrameSize);
     mBuffer = new MemoryBase(mHeap, 0, mPreviewFrameSize);
+
+    mPreviewHeap = new MemoryHeapBase(mPreviewFrameSize);
+    mPreviewBuffer = new MemoryBase(mPreviewHeap, 0, mPreviewFrameSize);
+
+    mRecordingHeap = new MemoryHeapBase(mPreviewFrameSize);
+    mRecordingBuffer = new MemoryBase(mRecordingHeap, 0, mPreviewFrameSize);
+
+    mRawHeap = new MemoryHeapBase(mPreviewFrameSize);
+    mRawBuffer = new MemoryBase(mRawHeap, 0, mPreviewFrameSize);
 
     camera.Init();
     camera.StartStreaming();
@@ -161,20 +236,34 @@ bool CameraHardware::previewEnabled()
 
 status_t CameraHardware::startRecording(recording_callback cb, void* user)
 {
-    return UNKNOWN_ERROR;
+    LOGD("startRecording");
+    mRecordingLock.lock();
+    mRecordingCallback = cb;
+    mRecordingCallbackCookie = user;
+    mRecordingLock.unlock();
+    return NO_ERROR;
+
 }
 
 void CameraHardware::stopRecording()
 {
+    mRecordingLock.lock();
+    mRecordingCallback = NULL;
+    mRecordingCallbackCookie = NULL;
+    mRecordingLock.unlock();
 }
 
 bool CameraHardware::recordingEnabled()
 {
-    return false;
+    return mRecordingCallback !=0;
 }
 
 void CameraHardware::releaseRecordingFrame(const sp<IMemory>& mem)
 {
+    if (UNLIKELY(mDebugFps)) {
+        showFPS("Recording");
+    }
+    return;
 }
 
 // ---------------------------------------------------------------------------
@@ -219,44 +308,25 @@ status_t CameraHardware::autoFocus(autofocus_callback af_cb,
 
 int CameraHardware::pictureThread()
 {
-    unsigned char *frame;
-    int bufferSize;
-    int w,h;
     int ret;
-    struct v4l2_buffer buffer;
-    struct v4l2_format format;
-    struct v4l2_buffer cfilledbuffer;
-    struct v4l2_requestbuffers creqbuf;
-    struct v4l2_capability cap;
 
     if (mShutterCallback)
         mShutterCallback(mPictureCallbackCookie);
 
-    mParameters.getPictureSize(&w, &h);
-    LOGD("Picture Size: Width = %d \t Height = %d", w, h);
-
-    int width, height;
-    mParameters.getPictureSize(&width, &height);
-    camera.Open(VIDEO_DEVICE, MIN_WIDTH, MIN_HEIGHT, PIXEL_FORMAT);
-    camera.Init();
-    camera.StartStreaming();
-
-    if (mRawPictureCallback) {
-        LOGD("mRawPictureCallback");
-
-//    	mRawPictureCallback(camera.GrabRawFrame(), mPictureCallbackCookie);
+    sp<PreviewThread> previewThread;
+    Mutex::Autolock lock(mLock);
+    previewStopped = true;
+    previewThread = mPreviewThread;
+    if (previewThread != 0) {
+        previewThread->requestExitAndWait();
     }
-
+    mPreviewThread.clear();
+    // Grab the photo
     if (mJpegPictureCallback) {
-        LOGD ("mJpegPictureCallback");
-
         mJpegPictureCallback(camera.GrabJpegFrame(), mPictureCallbackCookie);
     }
-
-    camera.Uninit();
-    camera.StopStreaming();
-    camera.Close();
-
+    previewStopped = false;
+    mPreviewThread = new PreviewThread(this);
     return NO_ERROR;
 }
 
@@ -265,14 +335,10 @@ status_t CameraHardware::takePicture(shutter_callback shutter_cb,
                                          jpeg_callback jpeg_cb,
                                          void* user)
 {
-    stopPreview();
     mShutterCallback = shutter_cb;
     mRawPictureCallback = raw_cb;
     mJpegPictureCallback = jpeg_cb;
     mPictureCallbackCookie = user;
-    //if (createThread(beginPictureThread, this) == false)
-    //    return -1;
-
     pictureThread();
 
     return NO_ERROR;
@@ -316,11 +382,13 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
     LOGD("PREVIEW SIZE: w=%d h=%d framerate=%d", w, h, framerate);
 
     params.getPictureSize(&w, &h);
+    LOGD("requested size %d x %d", w, h);
 
     mParameters = params;
 
     // Set to fixed sizes
-    mParameters.setPreviewSize(MIN_WIDTH,MIN_HEIGHT);
+    mParameters.setPreviewSize(PREVIEW_WIDTH, PREVIEW_HEIGHT);
+    mParameters.setPictureSize(PREVIEW_WIDTH, PREVIEW_HEIGHT);
 
     return NO_ERROR;
 }
@@ -330,7 +398,7 @@ CameraParameters CameraHardware::getParameters() const
     CameraParameters params;
 
     {
-    Mutex::Autolock lock(mLock);
+        Mutex::Autolock lock(mLock);
         params = mParameters;
     }
 
@@ -339,7 +407,6 @@ CameraParameters CameraHardware::getParameters() const
 
 void CameraHardware::release()
 {
-    close(camera_device);
 }
 
 sp<CameraHardwareInterface> CameraHardware::createInstance()

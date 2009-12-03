@@ -8,7 +8,8 @@ include $(CLEAR_VARS)
 
 LOCAL_SRC_FILES:=               \
     CameraHardware.cpp         \
-    V4L2Camera.cpp
+    V4L2Camera.cpp         \
+    converter.cpp
 
 LOCAL_CFLAGS += -Iexternal/jpeg
 

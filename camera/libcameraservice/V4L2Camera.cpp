@@ -1,11 +1,20 @@
 /*
- *      This program is free software; you can redistribute it and/or modify
- *      it under the terms of the GNU General Public License as published by
- *      the Free Software Foundation; either version 2 of the License, or
- *      (at your option) any later version.
- *      Author: Niels Keeman  nielskeeman@gmail.com
- *
- */
+**
+** Copyright (C) 2009 0xlab.org - http://0xlab.org/
+** Copyright 2008, The Android Open Source Project
+**
+** Licensed under the Apache License, Version 2.0 (the "License");
+** you may not use this file except in compliance with the License.
+** You may obtain a copy of the License at
+**
+**     http://www.apache.org/licenses/LICENSE-2.0
+**
+** Unless required by applicable law or agreed to in writing, software
+** distributed under the License is distributed on an "AS IS" BASIS,
+** WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+** See the License for the specific language governing permissions and
+** limitations under the License.
+*/
 
 #define LOG_TAG "V4L2Camera"
 #include <utils/Log.h>
@@ -22,11 +31,11 @@
 
 #include <linux/videodev.h>
 
-#include "V4L2Camera.h"
-
-extern "C" { /* Android jpeglib.h missed extern "C" */
-#include <jpeglib.h>
+extern "C" {
+    #include <jpeglib.h>
 }
+
+#include "V4L2Camera.h"
 
 namespace android {
 
@@ -41,7 +50,7 @@ V4L2Camera::~V4L2Camera()
     free(videoIn);
 }
 
-int V4L2Camera::Open (const char *device, int width, int height, int pixelformat)
+int V4L2Camera::Open(const char *device, int width, int height, int pixelformat)
 {
     int ret;
 
@@ -82,6 +91,15 @@ int V4L2Camera::Open (const char *device, int width, int height, int pixelformat
         return ret;
     }
 
+    ret = init_parm();
+    if (ret < 0) {
+        LOGE("Init_parm Failed: %s", strerror(errno));
+        return ret;
+    }
+
+    videoIn->width = videoIn->format.fmt.pix.width;
+    videoIn->height = videoIn->format.fmt.pix.height;
+
     return 0;
 }
 
@@ -90,6 +108,8 @@ void V4L2Camera::Close ()
     close(fd);
 }
 
+
+//  Init mmap
 int V4L2Camera::Init()
 {
     int ret;
@@ -143,7 +163,34 @@ int V4L2Camera::Init()
     return 0;
 }
 
-void V4L2Camera::Uninit ()
+int V4L2Camera::init_parm()
+{
+    int ret;
+    int framerate;
+    struct v4l2_streamparm parm;
+
+    framerate = DEFAULT_FRAME_RATE;
+
+    parm.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+
+    ret = ioctl(fd, VIDIOC_G_PARM, &parm);
+    if(ret != 0) {
+        LOGE("VIDIOC_G_PARM fail....");
+        return ret;
+    }
+
+    parm.parm.capture.timeperframe.numerator = 1;
+    parm.parm.capture.timeperframe.denominator = framerate;
+    ret = ioctl(fd, VIDIOC_S_PARM, &parm);
+    if(ret != 0) {
+        LOGE("VIDIOC_S_PARM  Fail....");
+        return -1;
+    }
+
+    return 0;
+}
+
+void V4L2Camera::Uninit()
 {
     int ret;
 
@@ -220,16 +267,15 @@ void V4L2Camera::GrabPreviewFrame (void *previewBuffer)
     /* DQ */
     ret = ioctl(fd, VIDIOC_DQBUF, &videoIn->buf);
     if (ret < 0) {
-        //LOGE("GrabPreviewFrame: VIDIOC_DQBUF Failed");
-
+        LOGE("GrabPreviewFrame: VIDIOC_DQBUF Failed");
         return;
     }
     nDequeued++;
 
-    memcpy (tmpBuffer, videoIn->mem[videoIn->buf.index], (size_t) videoIn->buf.bytesused);
+    memcpy(tmpBuffer, videoIn->mem[videoIn->buf.index], (size_t) videoIn->buf.bytesused);
 
-    //convertYUYVtoYUV422SP((uint8_t *)tmpBuffer, (uint8_t *)previewBuffer, videoIn->width, videoIn->height);
-    convert((unsigned char *)tmpBuffer, (unsigned char *)previewBuffer, videoIn->width, videoIn->height);
+    convert((unsigned char *) tmpBuffer, (unsigned char *) previewBuffer,
+            videoIn->width, videoIn->height);
 
     ret = ioctl(fd, VIDIOC_QBUF, &videoIn->buf);
     if (ret < 0) {
@@ -242,14 +288,49 @@ void V4L2Camera::GrabPreviewFrame (void *previewBuffer)
     free(tmpBuffer);
 }
 
-sp<IMemory> V4L2Camera::GrabRawFrame ()
+void V4L2Camera::GrabRawFrame(void *previewBuffer)
 {
-    sp<MemoryHeapBase> memHeap = new MemoryHeapBase(videoIn->width * videoIn->height * 2);
-    sp<MemoryBase> memBase = new MemoryBase(memHeap, 0, videoIn->width * videoIn->height * 2);
+    int ret;
 
-    // Not yet implemented, do I have to?
+    videoIn->buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+    videoIn->buf.memory = V4L2_MEMORY_MMAP;
 
-    return memBase;
+    /* DQ */
+    ret = ioctl(fd, VIDIOC_DQBUF, &videoIn->buf);
+    if (ret < 0) {
+        LOGE("GrabRawFrame: VIDIOC_DQBUF Failed");
+        return;
+    }
+    nDequeued++;
+
+    memcpy(previewBuffer, videoIn->mem[videoIn->buf.index], (size_t) videoIn->buf.bytesused);
+
+    ret = ioctl(fd, VIDIOC_QBUF, &videoIn->buf);
+    if (ret < 0) {
+        LOGE("postGrabRawFrame: VIDIOC_QBUF Failed");
+        return;
+    }
+
+    nQueued++;
+}
+
+int
+V4L2Camera::savePicture(unsigned char *inputBuffer, const char * filename)
+{
+    FILE *output;
+    int fileSize;
+    int ret;
+    output = fopen(filename, "wb");
+
+    if (output == NULL) {
+        LOGE("GrabJpegFrame: Ouput file == NULL");
+        return 0;
+    }
+
+    fileSize = saveYUYVtoJPEG(inputBuffer, videoIn->width, videoIn->height, output, 100);
+
+    fclose(output);
+    return fileSize;
 }
 
 sp<IMemory> V4L2Camera::GrabJpegFrame ()
@@ -270,7 +351,7 @@ sp<IMemory> V4L2Camera::GrabJpegFrame ()
     }
     nDequeued++;
 
-    LOGI("GrabJpegFrame: Generated a frame from capture device");
+    fileSize = savePicture((unsigned char *)videoIn->mem[videoIn->buf.index], "/sdcard/tmp.jpg");
 
     /* Enqueue buffer */
     ret = ioctl(fd, VIDIOC_QBUF, &videoIn->buf);
@@ -279,17 +360,6 @@ sp<IMemory> V4L2Camera::GrabJpegFrame ()
         return NULL;
     }
     nQueued++;
-
-    output = fopen("/sdcard/tmp.jpg", "wb");
-
-    if (output == NULL) {
-        LOGE("GrabJpegFrame: Ouput file == NULL");
-        return NULL;
-    }
-
-    fileSize = saveYUYVtoJPEG((unsigned char *)videoIn->mem[videoIn->buf.index], videoIn->width, videoIn->height, output, 85);
-
-    fclose(output);
 
     input = fopen("/sdcard/tmp.jpg", "rb");
 
@@ -323,8 +393,6 @@ int V4L2Camera::saveYUYVtoJPEG (unsigned char *inputBuffer, int width, int heigh
     cinfo.err = jpeg_std_error (&jerr);
     jpeg_create_compress (&cinfo);
     jpeg_stdio_dest (&cinfo, file);
-
-    LOGI("JPEG PICTURE WIDTH AND HEIGHT: %dx%d", width, height);
 
     cinfo.image_width = width;
     cinfo.image_height = height;
@@ -380,6 +448,30 @@ int V4L2Camera::saveYUYVtoJPEG (unsigned char *inputBuffer, int width, int heigh
     return fileSize;
 }
 
+static inline void yuv_to_rgb16(unsigned char y,
+                                unsigned char u,
+                                unsigned char v,
+                                unsigned char *rgb)
+{
+    register int r,g,b;
+    int rgb16;
+
+    r = (1192 * (y - 16) + 1634 * (v - 128) ) >> 10;
+    g = (1192 * (y - 16) - 833 * (v - 128) - 400 * (u -128) ) >> 10;
+    b = (1192 * (y - 16) + 2066 * (u - 128) ) >> 10;
+
+    r = r > 255 ? 255 : r < 0 ? 0 : r;
+    g = g > 255 ? 255 : g < 0 ? 0 : g;
+    b = b > 255 ? 255 : b < 0 ? 0 : b;
+
+    rgb16 = (int)(((r >> 3)<<11) | ((g >> 2) << 5)| ((b >> 3) << 0));
+
+    *rgb = (unsigned char)(rgb16 & 0xFF);
+    rgb++;
+    *rgb = (unsigned char)((rgb16 & 0xFF00) >> 8);
+
+}
+
 void V4L2Camera::convert(unsigned char *buf, unsigned char *rgb, int width, int height)
 {
     int x,y,z=0;
@@ -398,36 +490,8 @@ void V4L2Camera::convert(unsigned char *buf, unsigned char *rgb, int width, int 
         yuv_to_rgb16(Y1, U, V, &rgb[y]);
         yuv_to_rgb16(Y2, U, V, &rgb[y + 2]);
     }
-
 }
 
-void V4L2Camera::yuv_to_rgb16(unsigned char y, unsigned char u, unsigned char v, unsigned char *rgb)
-{
-    int r,g,b;
-    int z;
-    int rgb16;
-
-    z = 0;
-
-    r = 1.164 * (y - 16) + 1.596 * (v - 128);
-    g = 1.164 * (y - 16) - 0.813 * (v - 128) - 0.391 * (u -128);
-    b = 1.164 * (y - 16) + 2.018 * (u - 128);
-
-    if (r > 255) r = 255;
-    if (g > 255) g = 255;
-    if (b > 255) b = 255;
-
-    if (r < 0) r = 0;
-    if (g < 0) g = 0;
-    if (b < 0) b = 0;
-
-    rgb16 = (int)(((r >> 3)<<11) | ((g >> 2) << 5)| ((b >> 3) << 0));
-
-    *rgb = (unsigned char)(rgb16 & 0xFF);
-    rgb++;
-    *rgb = (unsigned char)((rgb16 & 0xFF00) >> 8);
-
-}
 
 
 }; // namespace android

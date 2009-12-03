@@ -1,5 +1,6 @@
 /*
 **
+** Copyright (C) 2009 0xlab.org - http://0xlab.org/
 ** Copyright 2008, The Android Open Source Project
 **
 ** Licensed under the Apache License, Version 2.0 (the "License");
@@ -24,7 +25,7 @@
 #include <utils/MemoryHeapBase.h>
 #include <utils/threads.h>
 
-#include <sys/ioctl.h>
+#include <jpeglib.h>
 #include "V4L2Camera.h"
 
 namespace android {
@@ -93,14 +94,17 @@ private:
     int pictureThread();
 
     mutable Mutex       mLock;
+    mutable Mutex       mPreviewLock;
 
     CameraParameters    mParameters;
 
-    sp<MemoryHeapBase>	mHeap;
-    sp<MemoryBase>		mBuffer;
+    sp<MemoryHeapBase>  mHeap;         // format: 420
+    sp<MemoryBase>      mBuffer;
 
-    sp<MemoryHeapBase>  mPreviewHeap;
-    sp<MemoryHeapBase>  mRawHeap;
+    sp<MemoryHeapBase>  mPreviewHeap;  // format: 565
+    sp<MemoryBase>      mPreviewBuffer;
+    sp<MemoryHeapBase>  mRawHeap;      // format: 422
+    sp<MemoryBase>      mRawBuffer;
 
     bool                mPreviewRunning;
     int                 mPreviewFrameSize;
@@ -110,7 +114,6 @@ private:
     jpeg_callback       mJpegPictureCallback;
     void                *mPictureCallbackCookie;
 
-    // protected by mLock
     sp<PreviewThread>   mPreviewThread;
     preview_callback    mPreviewCallback;
     void                *mPreviewCallbackCookie;
@@ -118,16 +121,16 @@ private:
     autofocus_callback  mAutoFocusCallback;
     void                *mAutoFocusCallbackCookie;
 
-    // only used from PreviewThread
-    int                 mCurrentPreviewFrame;
+    sp<MemoryHeapBase>  mRecordingHeap;
+    sp<MemoryBase>      mRecordingBuffer;
 
-    void *				framebuffer;
-    bool				previewStopped;
-    int					camera_device;
-    void* 				mem[4];
-    int					nQueued;
-    int 				nDequeued;
-    V4L2Camera			camera;
+    Mutex               mRecordingLock;
+    int                 mRecordingFrameSize;
+    recording_callback  mRecordingCallback;
+    void                *mRecordingCallbackCookie;
+
+    bool		previewStopped;
+    V4L2Camera		camera;
 };
 
 }; // namespace android
