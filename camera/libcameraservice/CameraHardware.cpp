@@ -126,7 +126,7 @@ int CameraHardware::previewThread()
         camera.GrabRawFrame(mRawHeap->getBase());
 
         if (mRecordingCallback) {
-            yuyv422_to_yuv420sp((unsigned char *)mRawHeap->getBase(),
+            yuyv422_to_yuv420((unsigned char *)mRawHeap->getBase(),
                               (unsigned char *)mRecordingHeap->getBase(),
                               PREVIEW_WIDTH, PREVIEW_HEIGHT);
             nsecs_t timeStamp = systemTime(SYSTEM_TIME_MONOTONIC);
@@ -135,6 +135,7 @@ int CameraHardware::previewThread()
             camera.convert((unsigned char *) mRawHeap->getBase(),
                            (unsigned char *) mPreviewHeap->getBase(),
                            PREVIEW_WIDTH, PREVIEW_HEIGHT);
+            mPreviewCallback(mRecordingBuffer, mPreviewCallbackCookie);
 
             if (UNLIKELY(mDebugFps)) {
                 showFPS("Recording");
