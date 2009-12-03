@@ -314,20 +314,19 @@ int CameraHardware::pictureThread()
     if (mShutterCallback)
         mShutterCallback(mPictureCallbackCookie);
 
-    sp<PreviewThread> previewThread;
-    Mutex::Autolock lock(mLock);
-    previewStopped = true;
-    previewThread = mPreviewThread;
-    if (previewThread != 0) {
-        previewThread->requestExitAndWait();
-    }
-    mPreviewThread.clear();
-    // Grab the photo
+    camera.Open(VIDEO_DEVICE, PREVIEW_WIDTH, PREVIEW_HEIGHT, PIXEL_FORMAT);
+    camera.Init();
+    camera.StartStreaming();
+
     if (mJpegPictureCallback) {
+        LOGD ("mJpegPictureCallback");
+
         mJpegPictureCallback(camera.GrabJpegFrame(), mPictureCallbackCookie);
     }
-    previewStopped = false;
-    mPreviewThread = new PreviewThread(this);
+
+    camera.Uninit();
+    camera.StopStreaming();
+    camera.Close();
     return NO_ERROR;
 }
 
@@ -336,6 +335,7 @@ status_t CameraHardware::takePicture(shutter_callback shutter_cb,
                                          jpeg_callback jpeg_cb,
                                          void* user)
 {
+    stopPreview();
     mShutterCallback = shutter_cb;
     mRawPictureCallback = raw_cb;
     mJpegPictureCallback = jpeg_cb;
