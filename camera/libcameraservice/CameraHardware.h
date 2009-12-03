@@ -100,6 +100,8 @@ private:
 
     sp<MemoryHeapBase>  mHeap;         // format: 420
     sp<MemoryBase>      mBuffer;
+    sp<MemoryHeapBase>  mRawPicHeap;      // format: 422
+    sp<MemoryBase>      mRawPicBuffer;
 
     sp<MemoryHeapBase>  mPreviewHeap;  // format: 565
     sp<MemoryBase>      mPreviewBuffer;
@@ -108,6 +110,7 @@ private:
 
     bool                mPreviewRunning;
     int                 mPreviewFrameSize;
+    int                 mPictureFrameSize;
 
     shutter_callback    mShutterCallback;
     raw_callback        mRawPictureCallback;

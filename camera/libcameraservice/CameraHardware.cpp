@@ -47,6 +47,7 @@ CameraHardware::CameraHardware()
                     mPreviewHeap(0),
                     mRawHeap(0),
                     mPreviewFrameSize(0),
+                    mPictureFrameSize(0),
                     mRecordingFrameSize(0),
                     mRecordingCallback(0),
                     mRecordingCallbackCookie(0),
@@ -75,7 +76,7 @@ void CameraHardware::initDefaultParameters()
     p.setPreviewFrameRate(DEFAULT_FRAME_RATE);
     p.setPreviewFormat("yuv422sp");
     p.setPictureFormat("jpeg");
-    p.setPictureSize(PREVIEW_WIDTH, PREVIEW_HEIGHT);
+    p.setPictureSize(PICTURE_WIDTH, PICTURE_HEIGHT);
 
     p.set("jpeg-quality", "100"); // maximum quality
     p.set("picture-size-values", "1600x1200,1024x768,640x480,352x288");
@@ -146,9 +147,9 @@ int CameraHardware::previewThread()
                            (unsigned char *) mPreviewHeap->getBase(),
                            PREVIEW_WIDTH, PREVIEW_HEIGHT);
 
-            yuyv422_to_yuv420((unsigned char *)mRawHeap->getBase(),
+            yuyv422_to_yuv420((unsigned char *)mRawPicHeap->getBase(),
                               (unsigned char *)mHeap->getBase(),
-                              PREVIEW_WIDTH, PREVIEW_HEIGHT);
+                              PICTURE_WIDTH, PICTURE_HEIGHT);
             mPreviewCallback(mBuffer, mPreviewCallbackCookie);
 
             if (UNLIKELY(mDebugFps)) {
@@ -177,9 +178,10 @@ status_t CameraHardware::startPreview(preview_callback cb, void* user)
     }
 
     mPreviewFrameSize = PREVIEW_WIDTH * PREVIEW_HEIGHT * 2;
+    mPictureFrameSize = PICTURE_WIDTH * PICTURE_HEIGHT * 2;// to verify the picture to preview
 
-    mHeap = new MemoryHeapBase(mPreviewFrameSize);
-    mBuffer = new MemoryBase(mHeap, 0, mPreviewFrameSize);
+    mHeap = new MemoryHeapBase(mPictureFrameSize);
+    mBuffer = new MemoryBase(mHeap, 0, mPictureFrameSize);
 
     mPreviewHeap = new MemoryHeapBase(mPreviewFrameSize);
     mPreviewBuffer = new MemoryBase(mPreviewHeap, 0, mPreviewFrameSize);
@@ -189,6 +191,9 @@ status_t CameraHardware::startPreview(preview_callback cb, void* user)
 
     mRawHeap = new MemoryHeapBase(mPreviewFrameSize);
     mRawBuffer = new MemoryBase(mRawHeap, 0, mPreviewFrameSize);
+
+    mRawPicHeap = new MemoryHeapBase(mPictureFrameSize);
+    mRawPicBuffer = new MemoryBase(mRawPicHeap, 0, mPictureFrameSize);
 
     camera.Init();
     camera.StartStreaming();
@@ -314,7 +319,7 @@ int CameraHardware::pictureThread()
     if (mShutterCallback)
         mShutterCallback(mPictureCallbackCookie);
 
-    camera.Open(VIDEO_DEVICE, PREVIEW_WIDTH, PREVIEW_HEIGHT, PIXEL_FORMAT);
+    camera.Open(VIDEO_DEVICE, PICTURE_WIDTH, PICTURE_HEIGHT, PIXEL_FORMAT);
     camera.Init();
     camera.StartStreaming();
 
@@ -389,7 +394,7 @@ status_t CameraHardware::setParameters(const CameraParameters& params)
 
     // Set to fixed sizes
     mParameters.setPreviewSize(PREVIEW_WIDTH, PREVIEW_HEIGHT);
-    mParameters.setPictureSize(PREVIEW_WIDTH, PREVIEW_HEIGHT);
+    mParameters.setPictureSize(PICTURE_WIDTH, PICTURE_HEIGHT);
 
     return NO_ERROR;
 }
