@@ -2442,8 +2442,8 @@ bool AudioFlinger::AudioRecordThread::threadLoop()
         } else if (mRecordTrack != 0) {
 
             buffer.frameCount = inFrameCount;
-            if (LIKELY(mRecordTrack->getNextBuffer(&buffer) == NO_ERROR &&
-                       (int)buffer.frameCount == inFrameCount)) {
+            if (LIKELY(mRecordTrack->getNextBuffer(&buffer) == NO_ERROR/* &&
+                       (int)buffer.frameCount == inFrameCount*/)) {
                 LOGV("AudioRecordThread read: %d frames", buffer.frameCount);
                 ssize_t bytesRead = input->read(buffer.raw, inBufferSize);
                 if (bytesRead < 0) {
