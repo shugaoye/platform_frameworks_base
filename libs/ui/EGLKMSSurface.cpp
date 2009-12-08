@@ -92,6 +92,8 @@ EGLKMSSurface::EGLKMSSurface()
     egl_native_window_t::connect = 0;
     egl_native_window_t::disconnect = 0;
 
+    mDisplaySurface = NULL;
+
     egl_native_window_t::fd = mapFrameBuffer();
     if (egl_native_window_t::fd >= 0) {
 	/* point to back buffer */
