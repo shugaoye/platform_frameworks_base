@@ -276,17 +276,31 @@ LayerBuffer::Buffer::Buffer(const ISurface::BufferHeap& buffers, ssize_t offset)
     src.img.handle  = 0;
 
     gralloc_module_t const * module = LayerBuffer::getGrallocModule();
-    if (module && module->perform) {
-        int err = module->perform(module,
-                GRALLOC_MODULE_PERFORM_CREATE_HANDLE_FROM_BUFFER,
-                buffers.heap->heapID(), buffers.heap->getSize(),
-                offset, buffers.heap->base(),
-                &src.img.handle);
+    if (module) {
+        if (module->perform) {
+            int err = module->perform(module,
+                    GRALLOC_MODULE_PERFORM_CREATE_HANDLE_FROM_BUFFER,
+                    buffers.heap->heapID(), buffers.heap->getSize(),
+                    offset, buffers.heap->base(),
+                    &src.img.handle);
+            if (err != NO_ERROR) {
+                LOGE("CREATE_HANDLE_FROM_BUFFER (heapId=%d, size=%d, "
+                        "offset=%ld, base=%p) failed (%s)",
+                        buffers.heap->heapID(), buffers.heap->getSize(),
+                        offset, buffers.heap->base(), strerror(-err));
+                return;
+            }
+        }
 
-        LOGE_IF(err, "CREATE_HANDLE_FROM_BUFFER (heapId=%d, size=%d, "
-             "offset=%ld, base=%p) failed (%s)",
-                buffers.heap->heapID(), buffers.heap->getSize(),
-                offset, buffers.heap->base(), strerror(-err));
+        src.crop.l = 0;
+        src.crop.t = 0;
+        src.crop.r = buffers.w;
+        src.crop.b = buffers.h;
+
+        src.img.w       = buffers.hor_stride ?: buffers.w;
+        src.img.h       = buffers.ver_stride ?: buffers.h;
+        src.img.format  = buffers.format;
+        src.img.base    = (void*)(intptr_t(buffers.heap->base()) + offset);
     }
  }
 
