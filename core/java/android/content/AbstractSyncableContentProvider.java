@@ -185,7 +185,7 @@ public abstract class AbstractSyncableContentProvider extends SyncableContentPro
                         }
                         onAccountsChanged(accounts);
                         TempProviderSyncAdapter syncAdapter = getTempProviderSyncAdapter();
-                        if (syncAdapter != null) {
+                        if (syncAdapter != null && gaiaAccounts.size() > 0) {
                             syncAdapter.onAccountsChanged(accounts);
                         }
                     }
