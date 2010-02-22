@@ -40,6 +40,7 @@
 #include <ui/GraphicBufferAllocator.h>
 #include <ui/PixelFormat.h>
 #include <ui/DisplayInfo.h>
+#include <ui/keygrab.h>
 
 #include <pixelflinger/pixelflinger.h>
 #include <GLES/gl.h>
@@ -296,6 +297,7 @@ void SurfaceFlinger::bootFinished()
     LOGI("Boot is finished (%ld ms)", long(ns2ms(duration)) );  
     mBootFinished = true;
     property_set("ctl.stop", "bootanim");
+    keyGrab::setGrabOn();
 }
 
 void SurfaceFlinger::onFirstRef()
@@ -1434,6 +1436,7 @@ void SurfaceFlinger::screenReleased(int dpy)
 {
     // this may be called by a signal handler, we can't do too much in here
     android_atomic_or(eConsoleReleased, &mConsoleSignals);
+    keyGrab::setGrabOff();
     signalEvent();
 }
 
@@ -1441,6 +1444,7 @@ void SurfaceFlinger::screenAcquired(int dpy)
 {
     // this may be called by a signal handler, we can't do too much in here
     android_atomic_or(eConsoleAcquired, &mConsoleSignals);
+    keyGrab::setGrabOn();
     signalEvent();
 }
 
