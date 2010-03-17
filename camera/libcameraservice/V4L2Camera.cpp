@@ -31,6 +31,8 @@
 
 #include <linux/videodev.h>
 
+#define CAMERA_FILE "/data/tmp.jpg"
+
 extern "C" {
     #include <jpeglib.h>
 }
@@ -351,7 +353,7 @@ sp<IMemory> V4L2Camera::GrabJpegFrame ()
     }
     nDequeued++;
 
-    fileSize = savePicture((unsigned char *)videoIn->mem[videoIn->buf.index], "/sdcard/tmp.jpg");
+    fileSize = savePicture((unsigned char *)videoIn->mem[videoIn->buf.index], CAMERA_FILE);
 
     /* Enqueue buffer */
     ret = ioctl(fd, VIDIOC_QBUF, &videoIn->buf);
@@ -361,7 +363,7 @@ sp<IMemory> V4L2Camera::GrabJpegFrame ()
     }
     nQueued++;
 
-    input = fopen("/sdcard/tmp.jpg", "rb");
+    input = fopen(CAMERA_FILE, "rb");
 
     if (input == NULL)
         LOGE("GrabJpegFrame: Input file == NULL");
