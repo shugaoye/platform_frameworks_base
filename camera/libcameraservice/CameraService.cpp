@@ -608,7 +608,7 @@ status_t CameraService::Client::registerPreviewBuffers()
 
     // don't use a hardcoded format here
     ISurface::BufferHeap buffers(w, h, w, h,
-                                 HAL_PIXEL_FORMAT_YCrCb_420_SP,
+                                 PIXEL_FORMAT_RGB_565,
                                  mOrientation,
                                  0,
                                  mHardware->getPreviewHeap());
