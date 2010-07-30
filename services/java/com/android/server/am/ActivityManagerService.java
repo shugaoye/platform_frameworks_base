@@ -6447,7 +6447,7 @@ public final class ActivityManagerService extends ActivityManagerNative
                     && (mHomeProcess.info.flags & ApplicationInfo.FLAG_SYSTEM) == 0) {
             Iterator it = mHomeProcess.activities.iterator();
             while (it.hasNext()) {
-                HistoryRecord r = (HistoryRecord)it.next();
+                ActivityRecord r = (ActivityRecord)it.next();
                 if (r.isHomeActivity) {
                     Log.i(TAG, "Clearing package preferred activities from " + r.packageName);
                     try {
