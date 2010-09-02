@@ -710,7 +710,7 @@ public class LocationManager {
                 mListeners.put(listener, transport);
                 mService.requestLocationUpdates(provider, minTime, minDistance, transport);
             }
-        } catch (RemoteException ex) {
+        } catch (Exception ex) {
             Log.e(TAG, "requestLocationUpdates: DeadObjectException", ex);
         }
     }
