@@ -438,6 +438,7 @@ void LayerBase::drawWithOpenGL(const Region& clip, const Texture& texture) const
     Region::const_iterator it = clip.begin();
     Region::const_iterator const end = clip.end();
 
+#ifdef __arm__
     //StopWatch watch("GL transformed");
     const GLfixed texCoords[4][2] = {
             { 0,        0 },
@@ -480,6 +481,19 @@ void LayerBase::drawWithOpenGL(const Region& clip, const Texture& texture) const
         glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     }
     glDisableClientState(GL_TEXTURE_COORD_ARRAY);
+#else
+    GLint crop[4] = { 0, height, width, -height };
+    glTexParameteriv(GL_TEXTURE_2D, GL_TEXTURE_CROP_RECT_OES, crop);
+    int x = tx();
+    int y = ty();
+    y = fbHeight - (y + height);
+    while (it != end) {
+        const Rect& r = *it++;
+        const GLint sy = fbHeight - (r.top + r.height());
+        glScissor(r.left, sy, r.width(), r.height());
+        glDrawTexiOES(x, y, 0, width, height);
+    }
+#endif
 }
 
 void LayerBase::validateTexture(GLint textureName) const
