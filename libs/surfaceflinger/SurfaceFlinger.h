@@ -408,6 +408,8 @@ public:
     virtual status_t destroySurface(SurfaceID surfaceId);
     virtual status_t setState(int32_t count, const layer_state_t* states);
 
+    virtual status_t authGralloc(int32_t magic);
+
 private:
     ClientID            mId;
     SurfaceFlinger*     mFlinger;

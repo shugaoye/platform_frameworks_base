@@ -150,6 +150,8 @@ private:
     void        _init(const sp<ISurfaceComposer>& sm,
                     const sp<ISurfaceFlingerClient>& conn);
 
+    status_t    authGralloc();
+
     inline layer_state_t*   _get_state_l(SurfaceID id);
     layer_state_t*          _lockLayerState(SurfaceID id);
     inline void             _unlockLayerState();

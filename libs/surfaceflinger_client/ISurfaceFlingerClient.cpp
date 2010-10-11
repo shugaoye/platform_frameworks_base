@@ -53,7 +53,8 @@ enum {
     GET_CBLK = IBinder::FIRST_CALL_TRANSACTION,
     CREATE_SURFACE,
     DESTROY_SURFACE,
-    SET_STATE
+    SET_STATE,
+    AUTH_GRALLOC
 };
 
 class BpSurfaceFlingerClient : public BpInterface<ISurfaceFlingerClient>
@@ -114,6 +115,15 @@ public:
         remote()->transact(SET_STATE, data, &reply);
         return reply.readInt32();
     }
+
+    virtual status_t authGralloc(int32_t magic)
+    {
+        Parcel data, reply;
+        data.writeInterfaceToken(ISurfaceFlingerClient::getInterfaceDescriptor());
+        data.writeInt32(magic);
+        remote()->transact(AUTH_GRALLOC, data, &reply);
+        return reply.readInt32();
+    }
 };
 
 IMPLEMENT_META_INTERFACE(SurfaceFlingerClient, "android.ui.ISurfaceFlingerClient");
@@ -130,6 +140,11 @@ status_t BnSurfaceFlingerClient::onTransact(
             CHECK_INTERFACE(ISurfaceFlingerClient, data, reply);
             sp<IMemoryHeap> ctl(getControlBlock());
             reply->writeStrongBinder(ctl->asBinder());
+            return NO_ERROR;
+        } break;
+        case AUTH_GRALLOC: {
+            CHECK_INTERFACE(ISurfaceFlingerClient, data, reply);
+            reply->writeInt32( authGralloc( data.readInt32() ) );
             return NO_ERROR;
         } break;
     }

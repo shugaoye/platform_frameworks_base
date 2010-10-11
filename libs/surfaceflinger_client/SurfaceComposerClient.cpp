@@ -167,9 +167,38 @@ void SurfaceComposerClient::_init(
         return;
     }
 
+    authGralloc();
+
     mControlMemory = mClient->getControlBlock();
     mSignalServer = sm;
     mControl = static_cast<SharedClient *>(mControlMemory->getBase());
+}
+
+status_t SurfaceComposerClient::authGralloc()
+{
+    Mutex::Autolock _l(mLock);
+    hw_module_t const* module;
+    int err;
+
+    if (mClient == 0)
+        return INVALID_OPERATION;
+
+    err = hw_get_module(GRALLOC_HARDWARE_MODULE_ID, &module);
+    if (err == 0) {
+	gralloc_module_t const *gr = (gralloc_module_t const *)module;
+	if (gr->perform) {
+	    int32_t magic;
+
+	    err = gr->perform(gr, GRALLOC_MODULE_PERFORM_GET_DRM_MAGIC, &magic);
+	    if (!err) {
+		mLock.unlock();
+		err = mClient->authGralloc(magic);
+		mLock.lock();
+	    }
+	}
+    }
+
+    return err;
 }
 
 SurfaceComposerClient::~SurfaceComposerClient()

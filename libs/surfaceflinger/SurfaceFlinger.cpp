@@ -1822,6 +1822,22 @@ status_t BClient::setState(int32_t count, const layer_state_t* states)
     return mFlinger->setClientState(mId, count, states);
 }
 
+status_t BClient::authGralloc(int32_t magic)
+{
+	hw_module_t const* mod;
+	status_t err;
+
+	err = hw_get_module(GRALLOC_HARDWARE_MODULE_ID, &mod);
+	if (!err) {
+		gralloc_module_t const* gr =
+			reinterpret_cast<gralloc_module_t const*>(mod);
+
+		err = gr->perform(gr, GRALLOC_MODULE_PERFORM_AUTH_DRM_MAGIC, magic);
+	}
+
+	return err;
+}
+
 // ---------------------------------------------------------------------------
 
 GraphicPlane::GraphicPlane()

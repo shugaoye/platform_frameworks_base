@@ -71,6 +71,8 @@ public:
     virtual status_t    destroySurface(SurfaceID sid) = 0;
 
     virtual status_t    setState(int32_t count, const layer_state_t* states) = 0;
+
+    virtual status_t    authGralloc(int32_t magic) = 0;
 };
 
 // ----------------------------------------------------------------------------
