@@ -63,8 +63,10 @@ public class MediaFile {
     public static final int FILE_TYPE_3GPP2   = 24;
     public static final int FILE_TYPE_WMV     = 25;
     public static final int FILE_TYPE_ASF     = 26;
+    public static final int FILE_TYPE_AVI     = 27;
+    public static final int FILE_TYPE_MKV     = 28;
     private static final int FIRST_VIDEO_FILE_TYPE = FILE_TYPE_MP4;
-    private static final int LAST_VIDEO_FILE_TYPE = FILE_TYPE_ASF;
+    private static final int LAST_VIDEO_FILE_TYPE = FILE_TYPE_MKV;
     
     // Image file types
     public static final int FILE_TYPE_JPEG    = 31;
@@ -145,6 +147,8 @@ public class MediaFile {
         addFileType("OTA", FILE_TYPE_MID, "audio/midi");
         
         addFileType("MPEG", FILE_TYPE_MP4, "video/mpeg");
+        addFileType("AVI", FILE_TYPE_AVI, "video/avi");
+        addFileType("MKV", FILE_TYPE_MKV, "video/mkv");
         addFileType("MP4", FILE_TYPE_MP4, "video/mp4");
         addFileType("M4V", FILE_TYPE_M4V, "video/mp4");
         addFileType("3GP", FILE_TYPE_3GPP, "video/3gpp");

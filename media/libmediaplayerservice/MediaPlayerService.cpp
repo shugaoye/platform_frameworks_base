@@ -60,6 +60,9 @@
 #include <media/PVPlayer.h>
 #include "TestPlayerStub.h"
 #include "StagefrightPlayer.h"
+#ifdef BUILD_WITH_MPLAYER
+#include "MPlayer.h"
+#endif
 
 #include <OMX.h>
 
@@ -199,6 +202,15 @@ extmap FILE_EXTS [] =  {
         {".ota", SONIVOX_PLAYER},
         {".ogg", VORBIS_PLAYER},
         {".oga", VORBIS_PLAYER},
+#ifdef BUILD_WITH_MPLAYER
+#ifndef NO_OPENCORE
+        {".m4a", PV_PLAYER},
+        {".mp3", PV_PLAYER},
+#endif
+        {".mp4", MPLAYER_PLAYER},
+        {".avi", MPLAYER_PLAYER},
+        {".mkv", MPLAYER_PLAYER},
+#endif
 #ifndef NO_OPENCORE
         {".wma", PV_PLAYER},
         {".wmv", PV_PLAYER},
@@ -667,6 +679,9 @@ void MediaPlayerService::Client::disconnect()
 }
 
 static player_type getDefaultPlayerType() {
+#ifdef BUILD_WITH_MPLAYER
+    return MPLAYER_PLAYER;
+#endif
 #if BUILD_WITH_FULL_STAGEFRIGHT
     char value[PROPERTY_VALUE_MAX];
     if (property_get("media.stagefright.enable-player", value, NULL)
@@ -717,6 +732,11 @@ player_type getPlayerType(int fd, int64_t offset, int64_t length)
         // These are not currently supported through stagefright.
         return PV_PLAYER;
     }
+#endif
+
+#ifdef BUILD_WITH_MPLAYER
+    if (ident == 0x03334449 || ident == 20000000)
+        return PV_PLAYER;
 #endif
 
     // Some kind of MIDI?
@@ -788,6 +808,12 @@ static sp<MediaPlayerBase> createPlayer(player_type playerType, void* cookie,
 {
     sp<MediaPlayerBase> p;
     switch (playerType) {
+#ifdef BUILD_WITH_MPLAYER
+        case MPLAYER_PLAYER:
+            LOGV(" create MPlayer");
+            p = new MPlayer();
+            break;
+#endif
 #ifndef NO_OPENCORE
         case PV_PLAYER:
             LOGV(" create PVPlayer");

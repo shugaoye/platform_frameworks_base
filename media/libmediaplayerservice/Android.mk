@@ -62,6 +62,12 @@ LOCAL_C_INCLUDES :=                                                 \
 	$(TOP)/frameworks/base/media/libstagefright/include             \
         $(TOP)/external/tremolo/Tremolo
 
+ifeq ($(BUILD_WITH_MPLAYER),true)
+LOCAL_CFLAGS += -DBUILD_WITH_MPLAYER=1
+LOCAL_SHARED_LIBRARIES += libandroidmplayer
+LOCAL_C_INCLUDES += external/mplayer
+endif
+
 LOCAL_MODULE:= libmediaplayerservice
 
 include $(BUILD_SHARED_LIBRARY)
