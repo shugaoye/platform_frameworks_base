@@ -21,6 +21,7 @@ import android.view.Display;
 import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.WindowManagerPolicy;
+import android.os.SystemProperties;
 
 import java.io.PrintWriter;
 import java.io.FileInputStream;
@@ -48,6 +49,7 @@ public class InputDevice {
     /** Number of jumpy points to drop for touchscreens that need it. */
     private static final int JUMPY_TRANSITION_DROPS = 3;
     private static final int JUMPY_DROP_LIMIT = 3;
+    private static final int HWROTATION = SystemProperties.getInt("ro.sf.hwrotation", 0) / 90;
     
     static final String CALIBRATION_FILE = "/data/system/tslib/pointercal";
 
@@ -753,6 +755,7 @@ public class InputDevice {
                 long curTimeNano, Display display, int orientation,
                 int metaState) {
             boolean isMouse = (device.classes & RawInputEvent.CLASS_MOUSE) != 0;
+            orientation = (orientation + HWROTATION) % 4;
             if (mSkipLastPointers) {
                 mSkipLastPointers = false;
                 mLastNumPointers = 0;
