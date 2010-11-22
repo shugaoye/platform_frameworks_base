@@ -35,6 +35,7 @@ import android.os.UEventObserver;
 import android.provider.Settings;
 import android.util.EventLog;
 import android.util.Slog;
+import android.os.Handler;
 
 import java.io.File;
 import java.io.FileDescriptor;
@@ -42,6 +43,8 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.Timer;
+import java.util.TimerTask;
 
 
 /**
@@ -119,6 +122,8 @@ class BatteryService extends Binder {
 
     private boolean mSentLowBatteryBroadcast = false;
 
+    private final Handler mHandler = new Handler();
+
     public BatteryService(Context context) {
         mContext = context;
         mBatteryStats = BatteryStatsService.getService();
@@ -132,6 +137,25 @@ class BatteryService extends Binder {
 
         // set initial status
         update();
+
+        // start auto refresh
+        autoRefresh();
+    }
+
+    private Runnable mUpdateResults = new Runnable() {
+        public void run() {
+            update();
+        }
+    };
+
+    private final void autoRefresh() {
+        // Schedule every minute
+        new Timer().scheduleAtFixedRate(new TimerTask() {
+            @Override // Override!!
+            public void run() {
+                mHandler.post(mUpdateResults);
+            }
+        }, 60000, 60000);
     }
 
     final boolean isPowered() {
