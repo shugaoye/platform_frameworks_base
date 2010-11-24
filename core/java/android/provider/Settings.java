@@ -1187,6 +1187,11 @@ public final class Settings {
             "bluetooth_discoverability_timeout";
 
         /**
+         * Whether lock pattern is disable as user enters (0 = false, 1 = true)
+         */
+        public static final String LOCK_PATTERN_DISABLE = "lock_pattern_disable_pattern";
+
+        /**
          * @deprecated Use {@link android.provider.Settings.Secure#LOCK_PATTERN_ENABLED}
          * instead
          */
