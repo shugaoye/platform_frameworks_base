@@ -10,18 +10,8 @@
 
 #define LOG_TAG "V4L2Camera"
 #include <utils/Log.h>
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <utils/threads.h>
 #include <fcntl.h>
-#include <unistd.h>
-#include <errno.h>
-#include <sys/ioctl.h>
-#include <sys/mman.h>
-#include <sys/select.h>
-
-#include <linux/videodev.h>
 
 #include "converter.h"
 #include "V4L2Camera.h"
@@ -288,11 +278,67 @@ sp<IMemory> V4L2Camera::GrabRawFrame ()
     return memBase;
 }
 
+// a helper class for jpeg compression in memory
+class MemoryStream {
+public:
+    MemoryStream(char* buf, size_t sz);
+    ~MemoryStream() { closeStream(); }
+
+    void closeStream();
+    size_t getOffset() const { return bytesWritten; }
+    operator FILE *() { return file; }
+
+private:
+    static int runThread(void *);
+    int readPipe();
+
+    char *buffer;
+    size_t size;
+    size_t bytesWritten;
+    int pipefd[2];
+    FILE *file;
+    Mutex lock;
+    Condition exitedCondition;
+};
+
+MemoryStream::MemoryStream(char* buf, size_t sz)
+    : buffer(buf), size(sz), bytesWritten(0)
+{
+    if ((file = pipe(pipefd) ? NULL : fdopen(pipefd[1], "w")))
+        createThread(runThread, this);
+}
+
+void MemoryStream::closeStream()
+{
+    if (file) {
+        AutoMutex l(lock);
+        fclose(file);
+        file = NULL;
+        exitedCondition.wait(lock);
+    }
+}
+
+int MemoryStream::runThread(void *self)
+{
+    return static_cast<MemoryStream *>(self)->readPipe();
+}
+
+int MemoryStream::readPipe()
+{
+    char *buf = buffer;
+    ssize_t sz;
+    while ((sz = read(pipefd[0], buf, size - bytesWritten)) > 0) {
+        bytesWritten += sz;
+        buf += sz;
+    }
+    close(pipefd[0]);
+    AutoMutex l(lock);
+    exitedCondition.signal();
+    return 0;
+}
+
 sp<IMemory> V4L2Camera::GrabJpegFrame ()
 {
-    FILE *output;
-    FILE *input;
-    size_t fileSize;
     int ret;
 
     videoIn->buf.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
@@ -316,27 +362,17 @@ sp<IMemory> V4L2Camera::GrabJpegFrame ()
     }
     nQueued++;
 
-    output = fopen("/sdcard/tmp.jpg", "wb");
+    size_t bytesused = videoIn->buf.bytesused;
+    if (char *tmpBuf = new char[bytesused]) {
+        MemoryStream strm(tmpBuf, bytesused);
+        saveYUYVtoJPEG((unsigned char *)videoIn->mem[videoIn->buf.index], videoIn->width, videoIn->height, strm, 100);
+        strm.closeStream();
+        size_t fileSize = strm.getOffset();
 
-    if (output == NULL) {
-        LOGE("GrabJpegFrame: Ouput file == NULL");
-        return NULL;
-    }
-
-    fileSize = saveYUYVtoJPEG((unsigned char *)videoIn->mem[videoIn->buf.index], videoIn->width, videoIn->height, output, 85);
-
-    fclose(output);
-
-    input = fopen("/sdcard/tmp.jpg", "rb");
-
-    if (input == NULL)
-        LOGE("GrabJpegFrame: Input file == NULL");
-    else {
         sp<MemoryHeapBase> mjpegPictureHeap = new MemoryHeapBase(fileSize);
         sp<MemoryBase> jpegmemBase = new MemoryBase(mjpegPictureHeap, 0, fileSize);
-
-        fread((uint8_t *)mjpegPictureHeap->base(), 1, fileSize, input);
-        fclose(input);
+        memcpy(mjpegPictureHeap->base(), tmpBuf, fileSize);
+        delete[] tmpBuf;
 
         return jpegmemBase;
     }

@@ -27,7 +27,6 @@
 
 #define VIDEO_DEVICE        "/dev/video0"
 #define MIN_WIDTH           640
-
 #define MIN_HEIGHT          480
 #define PIXEL_FORMAT        V4L2_PIX_FMT_YUYV
 
@@ -62,9 +61,11 @@ void CameraHardware::initDefaultParameters()
     p.setPreviewSize(MIN_WIDTH, MIN_HEIGHT);
     p.setPreviewFrameRate(15);
     p.setPreviewFormat("yuv422sp");
+    p.set(p.KEY_SUPPORTED_PREVIEW_SIZES, "640x480");
 
     p.setPictureSize(MIN_WIDTH, MIN_HEIGHT);
     p.setPictureFormat("jpeg");
+    p.set(p.KEY_SUPPORTED_PICTURE_SIZES, "640x480");
 
     if (setParameters(p) != NO_ERROR) {
         LOGE("Failed to set default parameters?!");

@@ -40,7 +40,7 @@ LOCAL_SRC_FILES:=               \
     V4L2Camera.cpp              \
     converter.cpp
 
-LOCAL_CFLAGS += -Iexternal/jpeg
+LOCAL_C_INCLUDES += external/jpeg
 
 LOCAL_MODULE:= libcamera
 
