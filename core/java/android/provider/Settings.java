@@ -1192,6 +1192,16 @@ public final class Settings {
         public static final String LOCK_PATTERN_DISABLE = "lock_pattern_disable_pattern";
 
         /**
+         * Whether power off dialog is to be shown (0 = false, 1 = true)
+         */
+        public static final String REMOVE_POWER_OFF_DIALOG = "remove_power_off_dialog";
+
+        /**
+         * Whether confirmation during power-off is diabled (0 = false, 1 = true)
+         */
+        public static final String DISABLE_CONFIRMATION = "disable_power_off_confirmation";
+
+        /**
          * @deprecated Use {@link android.provider.Settings.Secure#LOCK_PATTERN_ENABLED}
          * instead
          */
