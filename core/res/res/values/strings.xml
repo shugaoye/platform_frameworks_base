@@ -299,9 +299,6 @@
     <!-- Title of the Global Actions Dialog -->
     <string name="global_actions">Device options</string>
 
-    <!-- Title of the Global Actions Dialog -->
-    <string name="global_nb_actions">Power button options</string>
-
     <!-- label for item that locks the phone in the phone options dialog -->
     <string name="global_action_lock">Screen lock</string>
 
