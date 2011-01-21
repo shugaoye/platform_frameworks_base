@@ -965,6 +965,13 @@
         <enum name="KEYCODE_F10" value="120" />
         <enum name="KEYCODE_F11" value="121" />
         <enum name="KEYCODE_F12" value="122" />
+        <enum name="KEYCODE_VOLUME_MUTE" value="123" />
+        <enum name="KEYCODE_SLEEP" value="124" />
+        <enum name="KEYCODE_WIFI" value="125" />
+        <enum name="KEYCODE_CTRL_LEFT" value="126" />
+        <enum name="KEYCODE_CTRL_RIGHT" value="127" />
+        <enum name="KEYCODE_CAPS_LOCK" value="128" />
+        <enum name="KEYCODE_MORE_KEY" value="129" />
     </attr>
 
     <!-- ***************************************************************** -->

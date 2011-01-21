@@ -355,6 +355,20 @@ public class KeyEvent extends InputEvent implements Parcelable {
     public static final int KEYCODE_F11             = 121;
     /** Key code constant: F12 key. */
     public static final int KEYCODE_F12             = 122;
+    /** Key code constant: Volume Mute key. */
+    public static final int KEYCODE_VOLUME_MUTE     = 123;
+    /** Key code constant: Sleep/Suspend key. */
+    public static final int KEYCODE_SLEEP           = 124;
+    /** Key code constant: Wifi Toggle key. */
+    public static final int KEYCODE_WIFI            = 125;
+    /** Key code constant: Left Ctrl modifier key. */
+    public static final int KEYCODE_CTRL_LEFT       = 126;
+    /** Key code constant: Right Ctrl modifier key. */
+    public static final int KEYCODE_CTRL_RIGHT      = 127;
+    /** Key code constant: Caps Lock key. */
+    public static final int KEYCODE_CAPS_LOCK       = 128;
+    /** Key code constant: A extra key found in some keyboards. */
+    public static final int KEYCODE_MORE_KEY        = 129;
 
     // NOTE: If you add a new keycode here you must also add it to:
     //  isSystem()
@@ -372,7 +386,7 @@ public class KeyEvent extends InputEvent implements Parcelable {
     //  those new codes.  This is intended to maintain a consistent
     //  set of key code definitions across all Android devices.
    
-    private static final int LAST_KEYCODE           = KEYCODE_F12;
+    private static final int LAST_KEYCODE           = KEYCODE_MORE_KEY;
     
     /**
      * @deprecated There are now more than MAX_KEYCODE keycodes.

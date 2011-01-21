@@ -147,6 +147,13 @@ static const KeycodeLabel KEYCODES[] = {
     { "F10", 120 },
     { "F11", 121 },
     { "F12", 122 },
+    { "VOLUME_MUTE", 123 },
+    { "SLEEP", 124 },
+    { "WIFI", 125 },
+    { "CTRL_LEFT", 126 },
+    { "CTRL_RIGHT", 127 },
+    { "CAPS_LOCK", 128 },
+    { "MORE_KEY", 129 },
 
     // NOTE: If you add a new keycode here you must also add it to several other files.
     //       Refer to frameworks/base/core/java/android/view/KeyEvent.java for the full list.

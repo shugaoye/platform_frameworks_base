@@ -166,6 +166,13 @@ enum {
     AKEYCODE_F10             = 120,
     AKEYCODE_F11             = 121,
     AKEYCODE_F12             = 122,
+    AKEYCODE_VOLUME_MUTE     = 123,
+    AKEYCODE_SLEEP           = 124,
+    AKEYCODE_WIFI            = 125,
+    AKEYCODE_CTRL_LEFT       = 126,
+    AKEYCODE_CTRL_RIGHT      = 127,
+    AKEYCODE_CAPS_LOCK       = 128,
+    AKEYCODE_MORE_KEY        = 129,
 
     // NOTE: If you add a new keycode here you must also add it to several other files.
     //       Refer to frameworks/base/core/java/android/view/KeyEvent.java for the full list.
