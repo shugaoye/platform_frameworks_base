@@ -331,6 +331,30 @@ public class KeyEvent extends InputEvent implements Parcelable {
     /** Key code constant: Mode Button key.
      * On a game controller, the button labeled Mode. */
     public static final int KEYCODE_BUTTON_MODE     = 110;
+    /** Key code constant: F1 key. */
+    public static final int KEYCODE_F1              = 111;
+    /** Key code constant: F2 key. */
+    public static final int KEYCODE_F2              = 112;
+    /** Key code constant: F3 key. */
+    public static final int KEYCODE_F3              = 113;
+    /** Key code constant: F4 key. */
+    public static final int KEYCODE_F4              = 114;
+    /** Key code constant: F5 key. */
+    public static final int KEYCODE_F5              = 115;
+    /** Key code constant: F6 key. */
+    public static final int KEYCODE_F6              = 116;
+    /** Key code constant: F7 key. */
+    public static final int KEYCODE_F7              = 117;
+    /** Key code constant: F8 key. */
+    public static final int KEYCODE_F8              = 118;
+    /** Key code constant: F9 key. */
+    public static final int KEYCODE_F9              = 119;
+    /** Key code constant: F10 key. */
+    public static final int KEYCODE_F10             = 120;
+    /** Key code constant: F11 key. */
+    public static final int KEYCODE_F11             = 121;
+    /** Key code constant: F12 key. */
+    public static final int KEYCODE_F12             = 122;
 
     // NOTE: If you add a new keycode here you must also add it to:
     //  isSystem()
@@ -348,7 +372,7 @@ public class KeyEvent extends InputEvent implements Parcelable {
     //  those new codes.  This is intended to maintain a consistent
     //  set of key code definitions across all Android devices.
    
-    private static final int LAST_KEYCODE           = KEYCODE_BUTTON_MODE;
+    private static final int LAST_KEYCODE           = KEYCODE_F12;
     
     /**
      * @deprecated There are now more than MAX_KEYCODE keycodes.

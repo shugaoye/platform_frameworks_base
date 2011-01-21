@@ -135,6 +135,18 @@ static const KeycodeLabel KEYCODES[] = {
     { "BUTTON_START", 108 },
     { "BUTTON_SELECT", 109 },
     { "BUTTON_MODE", 110 },
+    { "F1", 111 },
+    { "F2", 112 },
+    { "F3", 113 },
+    { "F4", 114 },
+    { "F5", 115 },
+    { "F6", 116 },
+    { "F7", 117 },
+    { "F8", 118 },
+    { "F9", 119 },
+    { "F10", 120 },
+    { "F11", 121 },
+    { "F12", 122 },
 
     // NOTE: If you add a new keycode here you must also add it to several other files.
     //       Refer to frameworks/base/core/java/android/view/KeyEvent.java for the full list.

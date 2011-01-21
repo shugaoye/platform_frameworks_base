@@ -154,6 +154,18 @@ enum {
     AKEYCODE_BUTTON_START    = 108,
     AKEYCODE_BUTTON_SELECT   = 109,
     AKEYCODE_BUTTON_MODE     = 110,
+    AKEYCODE_F1              = 111,
+    AKEYCODE_F2              = 112,
+    AKEYCODE_F3              = 113,
+    AKEYCODE_F4              = 114,
+    AKEYCODE_F5              = 115,
+    AKEYCODE_F6              = 116,
+    AKEYCODE_F7              = 117,
+    AKEYCODE_F8              = 118,
+    AKEYCODE_F9              = 119,
+    AKEYCODE_F10             = 120,
+    AKEYCODE_F11             = 121,
+    AKEYCODE_F12             = 122,
 
     // NOTE: If you add a new keycode here you must also add it to several other files.
     //       Refer to frameworks/base/core/java/android/view/KeyEvent.java for the full list.
