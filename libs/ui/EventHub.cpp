@@ -46,6 +46,9 @@
 #endif
 #include <sys/poll.h>
 #include <sys/ioctl.h>
+#include <linux/vt.h>
+
+#define ANDROID_VT  7
 
 /* this macro is used to tell if "bit" is set in "array"
  * it selects a byte from the array, and does a boolean AND
@@ -399,6 +402,13 @@ bool EventHub::getEvent(RawEvent* outEvent)
             return true;
         }
 
+        struct vt_stat vs;
+        int fd_vt = open("/dev/tty0", O_RDWR | O_SYNC);
+        if (fd_vt >= 0) {
+            ioctl(fd_vt, VT_GETSTATE, &vs);
+            close(fd_vt);
+        }
+
         // Grab the next input event.
         for (;;) {
             // Consume buffered input events, if any.
@@ -406,8 +416,14 @@ bool EventHub::getEvent(RawEvent* outEvent)
                 const struct input_event& iev = mInputBufferData[mInputBufferIndex++];
                 const device_t* device = mDevices[mInputDeviceIndex];
 
-                LOGV("%s got: t0=%d, t1=%d, type=%d, code=%d, v=%d", device->path.string(),
+                LOGV("%s got: vt=%d t0=%d, t1=%d, type=%d, code=%d, v=%d", device->path.string(), vs.v_active,
                      (int) iev.time.tv_sec, (int) iev.time.tv_usec, iev.type, iev.code, iev.value);
+
+                if (vs.v_active != ANDROID_VT) {
+                    LOGV("Skip a non Android VT event");
+                    continue;
+                }
+
                 if (device->id == mFirstKeyboardId) {
                     outEvent->deviceId = 0;
                 } else {
