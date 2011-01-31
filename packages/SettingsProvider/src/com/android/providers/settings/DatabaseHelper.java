@@ -1073,6 +1073,8 @@ public class DatabaseHelper extends SQLiteOpenHelper {
             loadBooleanSetting(stmt, Settings.System.NOTIFICATIONS_USE_RING_VOLUME,
                     R.bool.def_notifications_use_ring_volume);
 
+            loadBooleanSetting(stmt, Settings.System.SOFTKEYBOARD,
+                    R.bool.def_softkeyboard);
         } finally {
             if (stmt != null) stmt.close();
         }
