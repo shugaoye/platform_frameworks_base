@@ -375,10 +375,12 @@ bool EventHub::getEvent(int32_t* outDeviceId, int32_t* outType,
 
         // mFDs[0] is used for inotify, so process regular events starting at mFDs[1]
         for(i = 1; i < mFDCount; i++) {
-            if(mFDs[i].revents && keyGrab::isGrabOn()) {
+            if (mFDs[i].revents) {
                 LOGV("revents for %d = 0x%08x", i, mFDs[i].revents);
                 if(mFDs[i].revents & POLLIN) {
                     res = read(mFDs[i].fd, &iev, sizeof(iev));
+                    if (!keyGrab::isGrabOn())
+                        continue;
                     if (res == sizeof(iev)) {
                         LOGV("%s got: t0=%d, t1=%d, type=%d, code=%d, v=%d",
                              mDevices[i]->path.string(),
