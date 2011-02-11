@@ -50,7 +50,8 @@ CameraHardware::CameraHardware()
                     mNotifyFn(NULL),
                     mDataFn(NULL),
                     mTimestampFn(NULL),
-                    mUser(NULL)
+                    mUser(NULL),
+                    mMsgEnabled(0)
 {
     initDefaultParameters();
 }
