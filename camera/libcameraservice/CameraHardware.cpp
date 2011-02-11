@@ -28,6 +28,7 @@
 #define VIDEO_DEVICE        "/dev/video0"
 #define MIN_WIDTH           640
 #define MIN_HEIGHT          480
+#define CAM_SIZE            "640x480"
 #define PIXEL_FORMAT        V4L2_PIX_FMT_YUYV
 
 namespace android {
@@ -61,11 +62,11 @@ void CameraHardware::initDefaultParameters()
     p.setPreviewSize(MIN_WIDTH, MIN_HEIGHT);
     p.setPreviewFrameRate(15);
     p.setPreviewFormat("yuv422sp");
-    p.set(p.KEY_SUPPORTED_PREVIEW_SIZES, "640x480");
+    p.set(p.KEY_SUPPORTED_PREVIEW_SIZES, CAM_SIZE);
 
     p.setPictureSize(MIN_WIDTH, MIN_HEIGHT);
     p.setPictureFormat("jpeg");
-    p.set(p.KEY_SUPPORTED_PICTURE_SIZES, "640x480");
+    p.set(p.KEY_SUPPORTED_PICTURE_SIZES, CAM_SIZE);
 
     if (setParameters(p) != NO_ERROR) {
         LOGE("Failed to set default parameters?!");
