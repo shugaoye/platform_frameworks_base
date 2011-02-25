@@ -243,7 +243,7 @@ public class EthernetStateTracker extends NetworkStateTracker {
             if (state != mEM.ETHERNET_STATE_DISABLED) {
                 if (state == mEM.ETHERNET_STATE_UNKNOWN) {
                     // maybe this is the first time we run, so set it to enabled
-                    mEM.setEnabled(true);
+                    mEM.setEnabled(mEM.getDeviceNameList() != null);
                 } else {
                     try {
                         resetInterface();
