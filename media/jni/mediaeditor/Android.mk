@@ -68,8 +68,9 @@ LOCAL_CFLAGS += \
     -DUSE_STAGEFRIGHT_READERS \
     -DUSE_STAGEFRIGHT_3GPP_READER
 
-
+ifeq ($(TARGET_ARCH),arm)
 LOCAL_LDFLAGS += -fuse-ld=bfd
+endif
 
 LOCAL_STATIC_LIBRARIES := \
     libvideoeditor_core \
