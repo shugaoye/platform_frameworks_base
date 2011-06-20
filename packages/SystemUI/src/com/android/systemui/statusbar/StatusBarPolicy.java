@@ -40,11 +40,14 @@ import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.net.Uri;
 import android.net.wifi.WifiManager;
+import android.net.ethernet.EthernetManager;
+import android.net.ethernet.EthernetStateTracker;
 import android.os.Binder;
 import android.os.Handler;
 import android.os.Message;
 import android.os.RemoteException;
 import android.os.storage.StorageManager;
+import android.os.SystemProperties;
 import android.provider.Settings;
 import android.telephony.PhoneStateListener;
 import android.telephony.ServiceState;
@@ -501,6 +504,13 @@ public class StatusBarPolicy {
     private int mLastWifiSignalLevel = -1;
     private boolean mIsWifiConnected = false;
 
+    // Ethernet
+    private static final int[] sEthImages = {
+            R.drawable.connect_established,
+            R.drawable.connect_no,
+            R.drawable.connect_creating
+        };
+
     //4G
     private static final int[][] sWimaxSignalImages = {
             { R.drawable.stat_sys_data_wimax_signal_0,
@@ -557,6 +567,8 @@ public class StatusBarPolicy {
                     action.equals(WifiManager.WIFI_STATE_CHANGED_ACTION) ||
                     action.equals(WifiManager.RSSI_CHANGED_ACTION)) {
                 updateWifi(intent);
+            }  else if (action.equals(EthernetManager.ETHERNET_STATE_CHANGED_ACTION)) {
+                updateEth(intent);
             }
             else if (action.equals(LocationManager.GPS_ENABLED_CHANGE_ACTION) ||
                     action.equals(LocationManager.GPS_FIX_CHANGE_ACTION)) {
@@ -603,6 +615,7 @@ public class StatusBarPolicy {
         mPhone = (TelephonyManager)context.getSystemService(Context.TELEPHONY_SERVICE);
         mPhoneSignalIconId = R.drawable.stat_sys_signal_null;
         mService.setIcon("phone_signal", mPhoneSignalIconId, 0);
+        mService.setIconVisibility("phone_signal", false);
         mAlwaysUseCdmaRssi = mContext.getResources().getBoolean(
             com.android.internal.R.bool.config_alwaysUseCdmaRssi);
 
@@ -623,6 +636,10 @@ public class StatusBarPolicy {
         mService.setIcon("wifi", sWifiSignalImages[0][0], 0);
         mService.setIconVisibility("wifi", false);
         // wifi will get updated by the sticky intents
+
+        // ethernet
+        mService.setIcon("ethernet", sEthImages[0], 0);
+        mService.setIconVisibility("ethernet", false);
 
         // wimax
         //enable/disable wimax depending on the value in config.xml
@@ -692,6 +709,7 @@ public class StatusBarPolicy {
         filter.addAction(WifiManager.SUPPLICANT_CONNECTION_CHANGE_ACTION);
         filter.addAction(WifiManager.NETWORK_STATE_CHANGED_ACTION);
         filter.addAction(WifiManager.RSSI_CHANGED_ACTION);
+        filter.addAction(EthernetManager.ETHERNET_STATE_CHANGED_ACTION);
         filter.addAction(LocationManager.GPS_ENABLED_CHANGE_ACTION);
         filter.addAction(LocationManager.GPS_FIX_CHANGE_ACTION);
         filter.addAction(TelephonyIntents.ACTION_SIM_STATE_CHANGED);
@@ -943,6 +961,17 @@ public class StatusBarPolicy {
             }
             updateSignalStrength(); // apply any change in mInetCondition
             break;
+        case ConnectivityManager.TYPE_ETHERNET:
+            if (info.isConnected()) {
+                mService.setIcon("ethernet", sEthImages[0], 0);
+                // Show the icon since ethernet is connected
+                mService.setIconVisibility("ethernet", true);
+            } else {
+                mService.setIcon("ethernet", sEthImages[1], 0);
+                // Hide the icon since we're not connected
+                mService.setIconVisibility("ethernet", false);
+            }
+            break;
         case ConnectivityManager.TYPE_WIMAX:
             mInetCondition = inetCondition;
             updateWiMAX(intent);
@@ -1045,6 +1074,9 @@ public class StatusBarPolicy {
         int iconLevel = -1;
         int[] iconList;
 
+        if (!hasService()) {
+                return;
+        }
         // Display signal strength while in "emergency calls only" mode
         if (mServiceState == null || (!hasService() && !mServiceState.isEmergencyOnly())) {
             //Slog.d(TAG, "updateSignalStrength: no service");
@@ -1291,6 +1323,27 @@ public class StatusBarPolicy {
 
         mService.setIcon("bluetooth", iconId, 0);
         mService.setIconVisibility("bluetooth", mBluetoothEnabled);
+    }
+
+
+    private final void updateEth(Intent intent) {
+        final int event = intent.getIntExtra(EthernetManager.EXTRA_ETHERNET_STATE, EthernetManager.ETHERNET_STATE_UNKNOWN);
+        int iconId;
+        switch (event) {
+            case EthernetStateTracker.EVENT_HW_CONNECTED:
+            case EthernetStateTracker.EVENT_INTERFACE_CONFIGURATION_SUCCEEDED:
+                mService.setIconVisibility("ethernet", true);
+                iconId = sEthImages[0];
+                break;
+            case EthernetStateTracker.EVENT_HW_DISCONNECTED:
+            case EthernetStateTracker.EVENT_INTERFACE_CONFIGURATION_FAILED:
+                mService.setIconVisibility("ethernet", false);
+                iconId = sEthImages[1];
+                return;
+            default:
+                iconId = sEthImages[2];
+        }
+        mService.setIcon("ethernet", iconId, 0);
     }
 
     private final void updateWifi(Intent intent) {
