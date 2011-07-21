@@ -63,6 +63,9 @@
 #endif
 #include <sys/poll.h>
 #include <sys/ioctl.h>
+#include <linux/vt.h>
+
+#define ANDROID_VT  7
 
 /* this macro is used to tell if "bit" is set in "array"
  * it selects a byte from the array, and does a boolean AND
@@ -529,6 +532,14 @@ size_t EventHub::getEvents(int timeoutMillis, RawEvent* buffer, size_t bufferSiz
             }
         }
 
+#ifdef __i386__
+        struct vt_stat vs;
+        int fd_vt = open("/dev/tty0", O_RDWR | O_SYNC);
+        if (fd_vt >= 0) {
+            ioctl(fd_vt, VT_GETSTATE, &vs);
+            close(fd_vt);
+        }
+#endif
         // Grab the next input event.
         // mInputFdIndex is initially 1 because index 0 is used for inotify.
         bool deviceWasRemoved = false;
@@ -550,6 +561,12 @@ size_t EventHub::getEvents(int timeoutMillis, RawEvent* buffer, size_t bufferSiz
                     deviceWasRemoved = true;
                     break;
                 } else {
+#ifdef __i386__
+                    if (vs.v_active != ANDROID_VT) {
+                        LOGV("Skip a non Android VT event");
+                        continue;
+                    }
+#endif
                     const Device* device = mDevices[mInputFdIndex];
                     int32_t deviceId = device->id == mBuiltInKeyboardId ? 0 : device->id;
 
