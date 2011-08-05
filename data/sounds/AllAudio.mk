@@ -1,3 +1,4 @@
+#
 # Copyright (C) 2009 The Android Open Source Project
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,24 +14,7 @@
 # limitations under the License.
 #
 
-TOP_LOCAL_PATH:= $(call my-dir)
-
-# Build application
-
-LOCAL_PATH:= $(call my-dir)
-include $(CLEAR_VARS)
-
-LOCAL_MODULE_TAGS := tests
-
-LOCAL_SRC_FILES := $(call all-subdir-java-files)
-
-LOCAL_PACKAGE_NAME := BrowserTestPlugin
-
-LOCAL_JNI_SHARED_LIBRARIES := libtestplugin
-
-include $(BUILD_PACKAGE)
-
-# ============================================================
-
-# Also build all of the sub-targets under this one: the shared library.
-include $(call all-makefiles-under,$(LOCAL_PATH))
+$(call inherit-product, frameworks/base/data/sounds/OriginalAudio.mk)
+$(call inherit-product, frameworks/base/data/sounds/AudioPackage2.mk)
+$(call inherit-product, frameworks/base/data/sounds/AudioPackage3.mk)
+$(call inherit-product, frameworks/base/data/sounds/AudioPackage4.mk)

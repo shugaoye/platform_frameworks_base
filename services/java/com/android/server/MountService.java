@@ -1144,6 +1144,17 @@ class MountService extends IMountService.Stub
             // Post a unmount message.
             ShutdownCallBack ucb = new ShutdownCallBack(path, observer);
             mHandler.sendMessage(mHandler.obtainMessage(H_UNMOUNT_PM_UPDATE, ucb));
+        } else if (observer != null) {
+            /*
+             * Observer is waiting for onShutDownComplete when we are done.
+             * Since nothing will be done send notification directly so shutdown
+             * sequence can continue.
+             */
+            try {
+                observer.onShutDownComplete(StorageResultCode.OperationSucceeded);
+            } catch (RemoteException e) {
+                Slog.w(TAG, "RemoteException when shutting down");
+            }
         }
     }
 
@@ -1498,7 +1509,8 @@ class MountService extends IMountService.Stub
         } catch (NativeDaemonConnectorException e) {
             int code = e.getCode();
             if (code == VoldResponseCode.OpFailedStorageNotFound) {
-                throw new IllegalArgumentException(String.format("Container '%s' not found", id));
+                Slog.i(TAG, String.format("Container '%s' not found", id));
+                return null;
             } else {
                 throw new IllegalStateException(String.format("Unexpected response code %d", code));
             }

@@ -968,7 +968,9 @@ public class GSMPhone extends PhoneBase {
     }
 
     public void getCallWaiting(Message onComplete) {
-        mCM.queryCallWaiting(CommandsInterface.SERVICE_CLASS_VOICE, onComplete);
+        //As per 3GPP TS 24.083, section 1.6 UE doesn't need to send service
+        //class parameter in call waiting interrogation  to network
+        mCM.queryCallWaiting(CommandsInterface.SERVICE_CLASS_NONE, onComplete);
     }
 
     public void setCallWaiting(boolean enable, Message onComplete) {
@@ -1221,7 +1223,8 @@ public class GSMPhone extends PhoneBase {
                 // Check if this is a different SIM than the previous one. If so unset the
                 // voice mail number.
                 String imsi = getVmSimImsi();
-                if (imsi != null && !getSubscriberId().equals(imsi)) {
+                String imsiFromSIM = getSubscriberId();
+                if (imsi != null && imsiFromSIM != null && !imsiFromSIM.equals(imsi)) {
                     storeVoiceMailNumber(null);
                     setVmSimImsi(null);
                 }

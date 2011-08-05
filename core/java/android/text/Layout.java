@@ -749,6 +749,9 @@ public abstract class Layout {
         if (line == getLineCount() - 1)
             max++;
 
+        if (line != getLineCount() - 1)
+            max = TextUtils.getOffsetBefore(mText, getLineEnd(line));
+
         int best = min;
         float bestdist = Math.abs(getPrimaryHorizontal(best) - horiz);
 
@@ -893,7 +896,7 @@ public abstract class Layout {
         Directions dirs = getLineDirections(line);
 
         if (line != getLineCount() - 1)
-            end--;
+            end = TextUtils.getOffsetBefore(mText, end);
 
         float horiz = getPrimaryHorizontal(offset);
 
@@ -993,7 +996,7 @@ public abstract class Layout {
         Directions dirs = getLineDirections(line);
 
         if (line != getLineCount() - 1)
-            end--;
+            end = TextUtils.getOffsetBefore(mText, end);
 
         float horiz = getPrimaryHorizontal(offset);
 
@@ -1151,7 +1154,7 @@ public abstract class Layout {
         if (h2 < 0.5f)
             h2 = 0.5f;
 
-        if (h1 == h2) {
+        if (Float.compare(h1, h2) == 0) {
             dest.moveTo(h1, top);
             dest.lineTo(h1, bottom);
         } else {
@@ -1564,7 +1567,8 @@ public abstract class Layout {
                         h = dir * nextTab(text, start, end, h * dir, tabs);
                     }
 
-                    if (bm != null) {
+                    if (j != there && bm != null) {
+                        if (offset == start + j) return h;
                         workPaint.set(paint);
                         Styled.measureText(paint, workPaint, text,
                                            j, j + 2, null);
@@ -1958,4 +1962,3 @@ public abstract class Layout {
                                        new Directions(new short[] { 0, 32767 });
 
 }
-

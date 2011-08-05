@@ -93,6 +93,7 @@ public final class SIMRecords extends IccRecords {
     static final int SPN_RULE_SHOW_PLMN = 0x02;
 
     // From TS 51.011 EF[SPDI] section
+    static final int TAG_SPDI = 0xA3;
     static final int TAG_SPDI_PLMN_LIST = 0x80;
 
     // Full Name IEI from TS 24.008
@@ -589,6 +590,13 @@ public final class SIMRecords extends IccRecords {
                 break;
             case EVENT_GET_CPHS_MAILBOX_DONE:
             case EVENT_GET_MBDN_DONE:
+                //Resetting the voice mail number and voice mail tag to null
+                //as these should be updated from the data read from EF_MBDN.
+                //If they are not reset, incase of invalid data/exception these
+                //variables are retaining their previous values and are
+                //causing invalid voice mailbox info display to user.
+                voiceMailNum = null;
+                voiceMailTag = null;
                 isRecordLoadResponse = true;
 
                 ar = (AsyncResult)msg.obj;
@@ -1467,8 +1475,12 @@ public final class SIMRecords extends IccRecords {
 
         byte[] plmnEntries = null;
 
-        // There should only be one TAG_SPDI_PLMN_LIST
         for ( ; tlv.isValidObject() ; tlv.nextObject()) {
+            // Skip SPDI tag, if existant
+            if (tlv.getTag() == TAG_SPDI) {
+              tlv = new SimTlv(tlv.getData(), 0, tlv.getData().length);
+            }
+            // There should only be one TAG_SPDI_PLMN_LIST
             if (tlv.getTag() == TAG_SPDI_PLMN_LIST) {
                 plmnEntries = tlv.getData();
                 break;

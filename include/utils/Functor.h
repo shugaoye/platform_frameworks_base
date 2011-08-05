@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2009 The Android Open Source Project
+ * Copyright (C) 2011 The Android Open Source Project
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,18 +14,14 @@
  * limitations under the License.
  */
 
-package com.android.testplugin;
+#ifndef ANDROID_FUNCTOR_H
+#define ANDROID_FUNCTOR_H
 
-import android.app.Service;
-import android.content.Intent;
-import android.os.IBinder;
+namespace  android {
 
-public class TestPlugin extends Service {
-
-    @Override
-    public IBinder onBind(Intent intent) {
-        // TODO Auto-generated method stub
-        return null;
-    }
+struct Functor{};
 
 }
+
+#endif
+

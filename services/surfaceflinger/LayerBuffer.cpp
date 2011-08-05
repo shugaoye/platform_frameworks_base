@@ -93,6 +93,9 @@ bool LayerBuffer::needsBlending() const {
 }
 
 void LayerBuffer::setNeedsBlending(bool blending) {
+    if (mNeedsBlending != blending) {
+        mFlinger->invalidateLayerVisibility(this);
+    }
     mNeedsBlending = blending;
 }
 
@@ -509,7 +512,7 @@ status_t LayerBuffer::BufferSource::initTempBuffer() const
     const ISurface::BufferHeap& buffers(mBufferHeap);
     uint32_t w = mLayer.mTransformedBounds.width();
     uint32_t h = mLayer.mTransformedBounds.height();
-    if (buffers.w * h != buffers.h * w) {
+    if (mLayer.getOrientation() & (Transform::ROT_90 | Transform::ROT_270)) {
         int t = w; w = h; h = t;
     }
 
