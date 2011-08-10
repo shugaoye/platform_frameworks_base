@@ -3312,6 +3312,10 @@ void MouseInputMapper::initializeLocked() {
         mAccumulator.absX = screenWidth / 2;
         mAccumulator.absY = screenHeight / 2;
     }
+
+    // FIXME: should be read from a config file like idc of honeycomb
+    // Now only hardcoded touchpad to be orientation aware
+    mOrientationAware = (getDeviceName() == "ImPS/2 Generic Wheel Mouse");
 }
 
 void MouseInputMapper::sync(nsecs_t when) {
@@ -3398,6 +3402,26 @@ void MouseInputMapper::sync(nsecs_t when) {
             return;
         }
 
+        float temp;
+        switch (orientation) {
+        case InputReaderPolicyInterface::ROTATION_90:
+            swap(screenWidth, screenHeight);
+            if (mOrientationAware)
+                temp = x, x = y, y = -temp;
+            break;
+
+        case InputReaderPolicyInterface::ROTATION_180:
+            if (mOrientationAware)
+                x = -x, y = -y;
+            break;
+
+        case InputReaderPolicyInterface::ROTATION_270:
+            swap(screenWidth, screenHeight);
+            if (mOrientationAware)
+                temp = x, x = -y, y = temp;
+            break;
+        }
+
         mAccumulator.absX = (mAccumulator.absX + x) > screenWidth ? screenWidth - 1 : ((mAccumulator.absX + x) < 0 ? 0 : mAccumulator.absX + x);
         mAccumulator.absY = (mAccumulator.absY + y) > screenHeight ? screenHeight - 1 : ((mAccumulator.absY + y) < 0 ? 0 : mAccumulator.absY + y);
         pointerCoords.x = mAccumulator.absX;
@@ -3409,32 +3433,6 @@ void MouseInputMapper::sync(nsecs_t when) {
         pointerCoords.toolMajor = 0;
         pointerCoords.toolMinor = 0;
         pointerCoords.orientation = 0;
-
-        float temp;
-        switch (orientation) {
-        case InputReaderPolicyInterface::ROTATION_90:
-            temp = x;
-            x = y;
-            y = - temp;
-            temp = screenHeight;
-            screenHeight = screenWidth;
-            screenWidth = temp;
-            break;
-
-        case InputReaderPolicyInterface::ROTATION_180:
-            x = - x;
-            y = - y;
-            break;
-
-        case InputReaderPolicyInterface::ROTATION_270:
-            temp = x;
-            x = - y;
-            y = temp;
-            temp = screenHeight;
-            screenHeight = screenWidth;
-            screenWidth = temp;
-            break;
-        }
 
     } // release lock
 

@@ -520,6 +520,7 @@ private:
     Mutex mLock;
 
     int32_t mAssociatedDisplayId;
+    bool mOrientationAware;
 
     struct Accumulator {
         enum {
