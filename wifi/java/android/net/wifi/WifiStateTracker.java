@@ -1241,7 +1241,7 @@ public class WifiStateTracker extends NetworkStateTracker {
             
             case EVENT_DEFERRED_DISCONNECT:
                 if (mWifiInfo.getSupplicantState() != SupplicantState.UNINITIALIZED) {
-                    handleDisconnectedState(DetailedState.DISCONNECTED, true);
+                    handleDisconnectedState(DetailedState.DISCONNECTED, !SupplicantState.isValidState(mWifiInfo.getSupplicantState()));
                 }
                 break;
 
