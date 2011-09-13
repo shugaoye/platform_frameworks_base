@@ -7212,7 +7212,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback, Accessibility
             mPrivateFlags &= ~DRAWN;
             mPrivateFlags |= INVALIDATED;
             mPrivateFlags &= ~DRAWING_CACHE_VALID;
-            if (mParent != null && mAttachInfo != null && mAttachInfo.mHardwareAccelerated) {
+            if (mParent != null && mAttachInfo != null ){//&& mAttachInfo.mHardwareAccelerated) {
                 mParent.invalidateChild(this, null);
             }
         }
@@ -8436,7 +8436,7 @@ public class View implements Drawable.Callback, KeyEvent.Callback, Accessibility
             throw new IllegalArgumentException("Layer type can only be one of: LAYER_TYPE_NONE, "
                     + "LAYER_TYPE_SOFTWARE or LAYER_TYPE_HARDWARE");
         }
-
+if (layerType == LAYER_TYPE_HARDWARE) layerType = LAYER_TYPE_SOFTWARE;
         if (layerType == mLayerType) {
             if (layerType != LAYER_TYPE_NONE && paint != mLayerPaint) {
                 mLayerPaint = paint == null ? new Paint() : paint;
