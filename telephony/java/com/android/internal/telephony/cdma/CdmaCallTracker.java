@@ -134,6 +134,10 @@ public final class CdmaCallTracker extends CallTracker {
     public void registerForVoiceCallStarted(Handler h, int what, Object obj) {
         Registrant r = new Registrant(h, what, obj);
         voiceCallStartedRegistrants.add(r);
+        // Notify if in call when registering
+        if (state != Phone.State.IDLE) {
+            r.notifyRegistrant(new AsyncResult(null, null, null));
+        }
     }
     public void unregisterForVoiceCallStarted(Handler h) {
         voiceCallStartedRegistrants.remove(h);
@@ -1058,7 +1062,7 @@ public final class CdmaCallTracker extends CallTracker {
         if (PhoneNumberUtils.isEmergencyNumber(dialString)) {
             if (Phone.DEBUG_PHONE) log("disableDataCallInEmergencyCall");
             mIsInEmergencyCall = true;
-            phone.mDataConnection.setInternalDataEnabled(false);
+            phone.mDataConnectionTracker.setInternalDataEnabled(false);
         }
     }
 
@@ -1075,7 +1079,7 @@ public final class CdmaCallTracker extends CallTracker {
             }
             if (inEcm.compareTo("false") == 0) {
                 // Re-initiate data connection
-                phone.mDataConnection.setInternalDataEnabled(true);
+                phone.mDataConnectionTracker.setInternalDataEnabled(true);
             }
         }
     }

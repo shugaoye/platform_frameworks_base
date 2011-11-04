@@ -87,6 +87,8 @@
     <string name="mismatchPin">The PINs you entered do not match.</string>
     <!-- Displayed when a SIM PIN password is too long or too short. -->
     <string name="invalidPin">Type a PIN that is 4 to 8 numbers.</string>
+    <!-- Displayed when a SIM PUK password is too short. -->
+    <string name="invalidPuk">Type a PUK that is 8 numbers or longer.</string>
     <!-- Displayed to prompt the user to type the PUK password to unlock
          the SIM card. -->
     <string name="needPuk">Your SIM card is PUK-locked. Type the PUK code to unlock it.</string>
@@ -1644,6 +1646,15 @@
          Displayed in one line in a large font.  -->
     <string name="keyguard_password_enter_pin_code">Enter PIN code</string>
 
+    <!-- Instructions telling the user to enter their SIM PUK to unlock the keyguard.
+         Displayed in one line in a large font.  -->
+    <string name="keyguard_password_enter_puk_code">Enter PUK and new PIN code</string>
+
+    <!-- Prompt to enter SIM PUK in Edit Text Box in unlock screen -->
+    <string name="keyguard_password_enter_puk_prompt">PUK code</string>
+    <!-- Prompt to enter New SIM PIN in Edit Text Box in unlock screen -->
+    <string name="keyguard_password_enter_pin_prompt">New Pin Code</string>
+
     <!-- Displayed as hint in passwordEntry EditText on PasswordUnlockScreen [CHAR LIMIT=30]-->
     <string name="keyguard_password_entry_touch_hint"><font size="17">Touch to enter password</font></string>
 
@@ -1715,6 +1726,11 @@
     <string name="lockscreen_missing_sim_message" product="default">No SIM card in phone.</string>
     <!-- Shown in the lock screen to ask the user to insert a SIM card. -->
     <string name="lockscreen_missing_sim_instructions">Please insert a SIM card.</string>
+    <!-- Shown in the lock screen to ask the user to insert a SIM card when sim is missing or not readable. -->
+    <string name="lockscreen_missing_sim_instructions_long">The SIM card is missing or not readable. Please insert a SIM card.</string>
+    <!-- Shown in the lock screen to inform the user to SIM card is permanently disabled. -->
+    <string name="lockscreen_permanent_disabled_sim_instructions">Your SIM card is permanently disabled.\n
+    Please contact your wireless service provider to obtain another SIM card.</string>
 
     <!-- Shown in the lock screen when there is emergency calls only mode. -->
     <string name="emergency_calls_only" msgid="2485604591272668370">Emergency calls only</string>
@@ -2441,6 +2457,20 @@
     <string name="sms_control_yes">OK</string>
     <!-- See SMS_DIALOG.  This is a button choice to disallow sending the SMSes.. -->
     <string name="sms_control_no">Cancel</string>
+
+    <!-- SIM swap and device reboot Dialog --> <skip />
+    <!-- See SIM_REMOVED_DIALOG.  This is the title of that dialog. -->
+    <string name="sim_removed_title">SIM card removed</string>
+    <!-- See SIM_REMOVED_DIALOG.  This is the message of that dialog. -->
+    <string name="sim_removed_message">The mobile network will be unavailable until you replace the SIM card.</string>
+    <!-- See SIM_REMOVED_DIALOG.  This is the button of that dialog. -->
+    <string name="sim_done_button">Done</string>
+    <!-- See SIM_ADDED_DIALOG.  This is the title of that dialog. -->
+    <string name="sim_added_title">SIM card added</string>
+    <!-- See SIM_ADDED_DIALOG.  This is the message of that dialog. -->
+    <string name="sim_added_message">You must restart your device to access the mobile network.</string>
+    <!-- See SIM_ADDED_DIALOG.  This is the button of that dialog. -->
+    <string name="sim_restart_button">Restart</string>
 
     <!-- Date/Time picker dialogs strings -->
 

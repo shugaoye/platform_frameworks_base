@@ -19,11 +19,9 @@ package android.net;
 import android.net.ProxyProperties;
 import android.os.Parcelable;
 import android.os.Parcel;
-import android.util.Log;
+import android.text.TextUtils;
 
 import java.net.InetAddress;
-import java.net.NetworkInterface;
-import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -54,10 +52,25 @@ import java.util.Collections;
 public class LinkProperties implements Parcelable {
 
     String mIfaceName;
-    private Collection<LinkAddress> mLinkAddresses;
-    private Collection<InetAddress> mDnses;
-    private Collection<InetAddress> mGateways;
+    private Collection<LinkAddress> mLinkAddresses = new ArrayList<LinkAddress>();
+    private Collection<InetAddress> mDnses = new ArrayList<InetAddress>();
+    private Collection<RouteInfo> mRoutes = new ArrayList<RouteInfo>();
     private ProxyProperties mHttpProxy;
+
+    public static class CompareResult<T> {
+        public Collection<T> removed = new ArrayList<T>();
+        public Collection<T> added = new ArrayList<T>();
+
+        @Override
+        public String toString() {
+            String retVal = "removed=[";
+            for (T addr : removed) retVal += addr.toString() + ",";
+            retVal += "] added=[";
+            for (T addr : added) retVal += addr.toString() + ",";
+            retVal += "]";
+            return retVal;
+        }
+    }
 
     public LinkProperties() {
         clear();
@@ -67,10 +80,11 @@ public class LinkProperties implements Parcelable {
     public LinkProperties(LinkProperties source) {
         if (source != null) {
             mIfaceName = source.getInterfaceName();
-            mLinkAddresses = source.getLinkAddresses();
-            mDnses = source.getDnses();
-            mGateways = source.getGateways();
-            mHttpProxy = new ProxyProperties(source.getHttpProxy());
+            for (LinkAddress l : source.getLinkAddresses()) mLinkAddresses.add(l);
+            for (InetAddress i : source.getDnses()) mDnses.add(i);
+            for (RouteInfo r : source.getRoutes()) mRoutes.add(r);
+            mHttpProxy = (source.getHttpProxy() == null)  ?
+                null : new ProxyProperties(source.getHttpProxy());
         }
     }
 
@@ -91,7 +105,7 @@ public class LinkProperties implements Parcelable {
     }
 
     public void addLinkAddress(LinkAddress address) {
-        mLinkAddresses.add(address);
+        if (address != null) mLinkAddresses.add(address);
     }
 
     public Collection<LinkAddress> getLinkAddresses() {
@@ -99,18 +113,18 @@ public class LinkProperties implements Parcelable {
     }
 
     public void addDns(InetAddress dns) {
-        mDnses.add(dns);
+        if (dns != null) mDnses.add(dns);
     }
 
     public Collection<InetAddress> getDnses() {
         return Collections.unmodifiableCollection(mDnses);
     }
 
-    public void addGateway(InetAddress gateway) {
-        mGateways.add(gateway);
+    public void addRoute(RouteInfo route) {
+        if (route != null) mRoutes.add(route);
     }
-    public Collection<InetAddress> getGateways() {
-        return Collections.unmodifiableCollection(mGateways);
+    public Collection<RouteInfo> getRoutes() {
+        return Collections.unmodifiableCollection(mRoutes);
     }
 
     public void setHttpProxy(ProxyProperties proxy) {
@@ -122,9 +136,9 @@ public class LinkProperties implements Parcelable {
 
     public void clear() {
         mIfaceName = null;
-        mLinkAddresses = new ArrayList<LinkAddress>();
-        mDnses = new ArrayList<InetAddress>();
-        mGateways = new ArrayList<InetAddress>();
+        mLinkAddresses.clear();
+        mDnses.clear();
+        mRoutes.clear();
         mHttpProxy = null;
     }
 
@@ -141,19 +155,212 @@ public class LinkProperties implements Parcelable {
         String ifaceName = (mIfaceName == null ? "" : "InterfaceName: " + mIfaceName + " ");
 
         String linkAddresses = "LinkAddresses: [";
-        for (LinkAddress addr : mLinkAddresses) linkAddresses += addr.toString();
+        for (LinkAddress addr : mLinkAddresses) linkAddresses += addr.toString() + ",";
         linkAddresses += "] ";
 
         String dns = "DnsAddresses: [";
         for (InetAddress addr : mDnses) dns += addr.getHostAddress() + ",";
         dns += "] ";
 
-        String gateways = "Gateways: [";
-        for (InetAddress gw : mGateways) gateways += gw.getHostAddress() + ",";
-        gateways += "] ";
+        String routes = "Routes: [";
+        for (RouteInfo route : mRoutes) routes += route.toString() + ",";
+        routes += "] ";
         String proxy = (mHttpProxy == null ? "" : "HttpProxy: " + mHttpProxy.toString() + " ");
 
-        return ifaceName + linkAddresses + gateways + dns + proxy;
+        return ifaceName + linkAddresses + routes + dns + proxy;
+    }
+
+    /**
+     * Compares this {@code LinkProperties} interface name against the target
+     *
+     * @param target LinkProperties to compare.
+     * @return {@code true} if both are identical, {@code false} otherwise.
+     */
+    public boolean isIdenticalInterfaceName(LinkProperties target) {
+        return TextUtils.equals(getInterfaceName(), target.getInterfaceName());
+    }
+
+    /**
+     * Compares this {@code LinkProperties} interface name against the target
+     *
+     * @param target LinkProperties to compare.
+     * @return {@code true} if both are identical, {@code false} otherwise.
+     */
+    public boolean isIdenticalAddresses(LinkProperties target) {
+        Collection<InetAddress> targetAddresses = target.getAddresses();
+        Collection<InetAddress> sourceAddresses = getAddresses();
+        return (sourceAddresses.size() == targetAddresses.size()) ?
+                    sourceAddresses.containsAll(targetAddresses) : false;
+    }
+
+    /**
+     * Compares this {@code LinkProperties} DNS addresses against the target
+     *
+     * @param target LinkProperties to compare.
+     * @return {@code true} if both are identical, {@code false} otherwise.
+     */
+    public boolean isIdenticalDnses(LinkProperties target) {
+        Collection<InetAddress> targetDnses = target.getDnses();
+        return (mDnses.size() == targetDnses.size()) ?
+                    mDnses.containsAll(targetDnses) : false;
+    }
+
+    /**
+     * Compares this {@code LinkProperties} Routes against the target
+     *
+     * @param target LinkProperties to compare.
+     * @return {@code true} if both are identical, {@code false} otherwise.
+     */
+    public boolean isIdenticalRoutes(LinkProperties target) {
+        Collection<RouteInfo> targetRoutes = target.getRoutes();
+        return (mRoutes.size() == targetRoutes.size()) ?
+                    mRoutes.containsAll(targetRoutes) : false;
+    }
+
+    /**
+     * Compares this {@code LinkProperties} HttpProxy against the target
+     *
+     * @param target LinkProperties to compare.
+     * @return {@code true} if both are identical, {@code false} otherwise.
+     */
+    public boolean isIdenticalHttpProxy(LinkProperties target) {
+        return getHttpProxy() == null ? target.getHttpProxy() == null :
+                    getHttpProxy().equals(target.getHttpProxy());
+    }
+
+    @Override
+    /**
+     * Compares this {@code LinkProperties} instance against the target
+     * LinkProperties in {@code obj}. Two LinkPropertieses are equal if
+     * all their fields are equal in values.
+     *
+     * For collection fields, such as mDnses, containsAll() is used to check
+     * if two collections contains the same elements, independent of order.
+     * There are two thoughts regarding containsAll()
+     * 1. Duplicated elements. eg, (A, B, B) and (A, A, B) are equal.
+     * 2. Worst case performance is O(n^2).
+     *
+     * @param obj the object to be tested for equality.
+     * @return {@code true} if both objects are equal, {@code false} otherwise.
+     */
+    public boolean equals(Object obj) {
+        if (this == obj) return true;
+
+        if (!(obj instanceof LinkProperties)) return false;
+
+        LinkProperties target = (LinkProperties) obj;
+
+        return isIdenticalInterfaceName(target) &&
+                isIdenticalAddresses(target) &&
+                isIdenticalDnses(target) &&
+                isIdenticalRoutes(target) &&
+                isIdenticalHttpProxy(target);
+    }
+
+    /**
+     * Return two lists, a list of addresses that would be removed from
+     * mLinkAddresses and a list of addresses that would be added to
+     * mLinkAddress which would then result in target and mLinkAddresses
+     * being the same list.
+     *
+     * @param target is a LinkProperties with the new list of addresses
+     * @return the removed and added lists.
+     */
+    public CompareResult<LinkAddress> compareAddresses(LinkProperties target) {
+        /*
+         * Duplicate the LinkAddresses into removed, we will be removing
+         * address which are common between mLinkAddresses and target
+         * leaving the addresses that are different. And address which
+         * are in target but not in mLinkAddresses are placed in the
+         * addedAddresses.
+         */
+        CompareResult<LinkAddress> result = new CompareResult<LinkAddress>();
+        result.removed = new ArrayList<LinkAddress>(mLinkAddresses);
+        result.added.clear();
+        if (target != null) {
+            for (LinkAddress newAddress : target.getLinkAddresses()) {
+                if (! result.removed.remove(newAddress)) {
+                    result.added.add(newAddress);
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Return two lists, a list of dns addresses that would be removed from
+     * mDnses and a list of addresses that would be added to
+     * mDnses which would then result in target and mDnses
+     * being the same list.
+     *
+     * @param target is a LinkProperties with the new list of dns addresses
+     * @return the removed and added lists.
+     */
+    public CompareResult<InetAddress> compareDnses(LinkProperties target) {
+        /*
+         * Duplicate the InetAddresses into removed, we will be removing
+         * dns address which are common between mDnses and target
+         * leaving the addresses that are different. And dns address which
+         * are in target but not in mDnses are placed in the
+         * addedAddresses.
+         */
+        CompareResult<InetAddress> result = new CompareResult<InetAddress>();
+
+        result.removed = new ArrayList<InetAddress>(mDnses);
+        result.added.clear();
+        if (target != null) {
+            for (InetAddress newAddress : target.getDnses()) {
+                if (! result.removed.remove(newAddress)) {
+                    result.added.add(newAddress);
+                }
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Return two lists, a list of routes that would be removed from
+     * mRoutes and a list of routes that would be added to
+     * mRoutes which would then result in target and mRoutes
+     * being the same list.
+     *
+     * @param target is a LinkProperties with the new list of routes
+     * @return the removed and added lists.
+     */
+    public CompareResult<RouteInfo> compareRoutes(LinkProperties target) {
+        /*
+         * Duplicate the RouteInfos into removed, we will be removing
+         * routes which are common between mDnses and target
+         * leaving the routes that are different. And route address which
+         * are in target but not in mRoutes are placed in added.
+         */
+        CompareResult<RouteInfo> result = new CompareResult<RouteInfo>();
+
+        result.removed = new ArrayList<RouteInfo>(mRoutes);
+        result.added.clear();
+        if (target != null) {
+            for (RouteInfo r : target.getRoutes()) {
+                if (! result.removed.remove(r)) {
+                    result.added.add(r);
+                }
+            }
+        }
+        return result;
+    }
+
+
+    @Override
+    /**
+     * generate hashcode based on significant fields
+     * Equal objects must produce the same hash code, while unequal objects
+     * may have the same hash codes.
+     */
+    public int hashCode() {
+        return ((null == mIfaceName) ? 0 : mIfaceName.hashCode()
+                + mLinkAddresses.size() * 31
+                + mDnses.size() * 37
+                + mRoutes.size() * 41
+                + ((null == mHttpProxy) ? 0 : mHttpProxy.hashCode()));
     }
 
     /**
@@ -172,9 +379,9 @@ public class LinkProperties implements Parcelable {
             dest.writeByteArray(d.getAddress());
         }
 
-        dest.writeInt(mGateways.size());
-        for(InetAddress gw : mGateways) {
-            dest.writeByteArray(gw.getAddress());
+        dest.writeInt(mRoutes.size());
+        for(RouteInfo route : mRoutes) {
+            dest.writeParcelable(route, flags);
         }
 
         if (mHttpProxy != null) {
@@ -213,9 +420,7 @@ public class LinkProperties implements Parcelable {
                 }
                 addressCount = in.readInt();
                 for (int i=0; i<addressCount; i++) {
-                    try {
-                        netProp.addGateway(InetAddress.getByAddress(in.createByteArray()));
-                    } catch (UnknownHostException e) { }
+                    netProp.addRoute((RouteInfo)in.readParcelable(null));
                 }
                 if (in.readByte() == 1) {
                     netProp.setHttpProxy((ProxyProperties)in.readParcelable(null));

@@ -114,7 +114,15 @@ public class KeyguardUpdateMonitor {
             }
             String stateExtra = intent.getStringExtra(IccCard.INTENT_KEY_ICC_STATE);
             if (IccCard.INTENT_VALUE_ICC_ABSENT.equals(stateExtra)) {
-                this.simState = IccCard.State.ABSENT;
+                final String absentReason = intent
+                    .getStringExtra(IccCard.INTENT_KEY_LOCKED_REASON);
+
+                if (IccCard.INTENT_VALUE_ABSENT_ON_PERM_DISABLED.equals(
+                        absentReason)) {
+                    this.simState = IccCard.State.PERM_DISABLED;
+                } else {
+                    this.simState = IccCard.State.ABSENT;
+                }
             } else if (IccCard.INTENT_VALUE_ICC_READY.equals(stateExtra)) {
                 this.simState = IccCard.State.READY;
             } else if (IccCard.INTENT_VALUE_ICC_LOCKED.equals(stateExtra)) {
@@ -480,11 +488,11 @@ public class KeyguardUpdateMonitor {
     }
 
     /**
-     * Report that the user succesfully entered the sim pin so we
+     * Report that the user succesfully entered the sim pin or puk so we
      * have the information earlier than waiting for the intent
      * broadcast from the telephony code.
      */
-    public void reportSimPinUnlocked() {
+    public void reportSimUnlocked() {
         mSimState = IccCard.State.READY;
     }
 

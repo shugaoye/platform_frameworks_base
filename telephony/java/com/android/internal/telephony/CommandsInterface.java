@@ -20,6 +20,7 @@ import com.android.internal.telephony.gsm.SmsBroadcastConfigInfo;
 
 import android.os.Message;
 import android.os.Handler;
+import android.os.SystemProperties;
 
 
 /**
@@ -27,18 +28,18 @@ import android.os.Handler;
  */
 public interface CommandsInterface {
     enum RadioState {
-        RADIO_OFF,         /* Radio explicitly powered off (e.g. CFUN=0) */
-        RADIO_UNAVAILABLE, /* Radio unavailable (e.g. resetting or not booted) */
-        SIM_NOT_READY,     /* Radio is on, but the SIM interface is not ready */
-        SIM_LOCKED_OR_ABSENT,  /* SIM PIN locked, PUK required, network
-                               personalization, or SIM absent */
-        SIM_READY,         /* Radio is on and SIM interface is available */
-        RUIM_NOT_READY,    /* Radio is on, but the RUIM interface is not ready */
-        RUIM_READY,        /* Radio is on and the RUIM interface is available */
-        RUIM_LOCKED_OR_ABSENT, /* RUIM PIN locked, PUK required, network
-                                  personalization locked, or RUIM absent */
-        NV_NOT_READY,      /* Radio is on, but the NV interface is not available */
-        NV_READY;          /* Radio is on and the NV interface is available */
+        RADIO_OFF(0),         /* Radio explictly powered off (eg CFUN=0) */
+        RADIO_UNAVAILABLE(0), /* Radio unavailable (eg, resetting or not booted) */
+        SIM_NOT_READY(1),     /* Radio is on, but the SIM interface is not ready */
+        SIM_LOCKED_OR_ABSENT(1),  /* SIM PIN locked, PUK required, network
+                                     personalization, or SIM absent */
+        SIM_READY(1),         /* Radio is on and SIM interface is available */
+        RUIM_NOT_READY(2),    /* Radio is on, but the RUIM interface is not ready */
+        RUIM_READY(2),        /* Radio is on and the RUIM interface is available */
+        RUIM_LOCKED_OR_ABSENT(2), /* RUIM PIN locked, PUK required, network
+                                     personalization locked, or RUIM absent */
+        NV_NOT_READY(3),      /* Radio is on, but the NV interface is not available */
+        NV_READY(3);          /* Radio is on and the NV interface is available */
 
         public boolean isOn() /* and available...*/ {
             return this == SIM_NOT_READY
@@ -49,6 +50,14 @@ public interface CommandsInterface {
                     || this == RUIM_LOCKED_OR_ABSENT
                     || this == NV_NOT_READY
                     || this == NV_READY;
+        }
+        private int stateType;
+        private RadioState (int type) {
+            stateType = type;
+        }
+
+        public int getType() {
+            return stateType;
         }
 
         public boolean isAvailable() {
@@ -68,17 +77,25 @@ public interface CommandsInterface {
         }
 
         public boolean isGsm() {
-            return this == SIM_NOT_READY
-                    || this == SIM_LOCKED_OR_ABSENT
-                    || this == SIM_READY;
+            if (BaseCommands.getLteOnCdmaModeStatic() == Phone.LTE_ON_CDMA_TRUE) {
+                return false;
+            } else {
+                return this == SIM_NOT_READY
+                        || this == SIM_LOCKED_OR_ABSENT
+                        || this == SIM_READY;
+            }
         }
 
         public boolean isCdma() {
-            return this ==  RUIM_NOT_READY
-                    || this == RUIM_READY
-                    || this == RUIM_LOCKED_OR_ABSENT
-                    || this == NV_NOT_READY
-                    || this == NV_READY;
+            if (BaseCommands.getLteOnCdmaModeStatic() == Phone.LTE_ON_CDMA_TRUE) {
+                return true;
+            } else {
+                return this ==  RUIM_NOT_READY
+                        || this == RUIM_READY
+                        || this == RUIM_LOCKED_OR_ABSENT
+                        || this == NV_NOT_READY
+                        || this == NV_READY;
+            }
         }
     }
 
@@ -153,6 +170,9 @@ public interface CommandsInterface {
     //***** Methods
 
     RadioState getRadioState();
+    RadioState getSimState();
+    RadioState getRuimState();
+    RadioState getNvState();
 
     /**
      * Fires on any RadioState transition
@@ -213,6 +233,9 @@ public interface CommandsInterface {
     /** Any transition into SIM_LOCKED_OR_ABSENT */
     void registerForSIMLockedOrAbsent(Handler h, int what, Object obj);
     void unregisterForSIMLockedOrAbsent(Handler h);
+
+    void registerForIccStatusChanged(Handler h, int what, Object obj);
+    void unregisterForIccStatusChanged(Handler h);
 
     void registerForCallStateChanged(Handler h, int what, Object obj);
     void unregisterForCallStateChanged(Handler h);
@@ -330,14 +353,16 @@ public interface CommandsInterface {
 
     /**
      * Sets the handler for SIM Refresh notifications.
-     * Unlike the register* methods, there's only one notification handler
      *
      * @param h Handler for notification message.
      * @param what User-defined message code.
      * @param obj User object.
      */
+    void registerForIccRefresh(Handler h, int what, Object obj);
+    void unregisterForIccRefresh(Handler h);
+
     void setOnIccRefresh(Handler h, int what, Object obj);
-    void unSetOnIccRefresh(Handler h);
+    void unsetOnIccRefresh(Handler h);
 
     /**
      * Sets the handler for RING notifications.
@@ -581,6 +606,20 @@ public interface CommandsInterface {
       */
      void registerForExitEmergencyCallbackMode(Handler h, int what, Object obj);
      void unregisterForExitEmergencyCallbackMode(Handler h);
+
+     /**
+      * Registers the handler for RIL_UNSOL_RIL_CONNECT events.
+      *
+      * When ril connects or disconnects a message is sent to the registrant
+      * which contains an AsyncResult, ar, in msg.obj. The ar.result is an
+      * Integer which is the version of the ril or -1 if the ril disconnected.
+      *
+      * @param h Handler for notification message.
+      * @param what User-defined message code.
+      * @param obj User object.
+      */
+     void registerForRilConnected(Handler h, int what, Object obj);
+     void unregisterForRilConnected(Handler h);
 
     /**
      * Supply the ICC PIN to the ICC card
@@ -1419,6 +1458,12 @@ public interface CommandsInterface {
     void setCdmaSubscriptionSource(int cdmaSubscriptionType, Message response);
 
     /**
+     *  Requests to get the CDMA subscription srouce
+     * @param response is callback message
+     */
+    void getCdmaSubscriptionSource(Message response);
+
+    /**
      *  Set the TTY mode
      *
      * @param ttyMode one of the following:
@@ -1528,4 +1573,14 @@ public interface CommandsInterface {
      *          Callback message containing {@link IccCardStatus} structure for the card.
      */
     public void getIccCardStatus(Message result);
+
+    /**
+     * Return if the current radio is LTE on CDMA. This
+     * is a tri-state return value as for a period of time
+     * the mode may be unknown.
+     *
+     * @return {@link Phone#LTE_ON_CDMA_UNKNOWN}, {@link Phone#LTE_ON_CDMA_FALSE}
+     * or {@link Phone#LTE_ON_CDMA_TRUE}
+     */
+    public int getLteOnCdmaMode();
 }

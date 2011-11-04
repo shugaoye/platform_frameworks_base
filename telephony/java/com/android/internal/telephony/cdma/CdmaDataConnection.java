@@ -20,7 +20,6 @@ import android.os.Message;
 import android.util.Log;
 
 import com.android.internal.telephony.DataConnection;
-import com.android.internal.telephony.DataConnection.FailCause;
 import com.android.internal.telephony.Phone;
 import com.android.internal.telephony.RILConstants;
 import com.android.internal.telephony.RetryManager;
@@ -33,8 +32,8 @@ public class CdmaDataConnection extends DataConnection {
     private static final String LOG_TAG = "CDMA";
 
     // ***** Constructor
-    private CdmaDataConnection(CDMAPhone phone, String name, RetryManager rm) {
-        super(phone, name, rm);
+    private CdmaDataConnection(CDMAPhone phone, String name, int id, RetryManager rm) {
+        super(phone, name, id, rm);
     }
 
     /**
@@ -49,11 +48,10 @@ public class CdmaDataConnection extends DataConnection {
         synchronized (mCountLock) {
             mCount += 1;
         }
-        CdmaDataConnection cdmaDc = new CdmaDataConnection(phone,
-                "CdmaDataConnection-" + mCount, rm);
+        CdmaDataConnection cdmaDc = new CdmaDataConnection(phone, "CdmaDC-" + mCount,
+                id, rm);
         cdmaDc.start();
         if (DBG) cdmaDc.log("Made " + cdmaDc.getName());
-        cdmaDc.mId = id;
         return cdmaDc;
     }
 
@@ -68,6 +66,7 @@ public class CdmaDataConnection extends DataConnection {
     protected void onConnect(ConnectionParams cp) {
         if (DBG) log("CdmaDataConnection Connecting...");
 
+        mApn = cp.apn;
         createTime = -1;
         lastFailTime = -1;
         lastFailCause = FailCause.NONE;
@@ -84,7 +83,7 @@ public class CdmaDataConnection extends DataConnection {
         Message msg = obtainMessage(EVENT_SETUP_DATA_CONNECTION_DONE, cp);
         msg.obj = cp;
         phone.mCM.setupDataCall(
-                Integer.toString(RILConstants.SETUP_DATA_TECH_CDMA),
+                Integer.toString(getRadioTechnology(RILConstants.SETUP_DATA_TECH_CDMA)),
                 Integer.toString(dataProfile),
                 null, null, null,
                 Integer.toString(RILConstants.SETUP_DATA_AUTH_PAP_CHAP),
@@ -99,9 +98,9 @@ public class CdmaDataConnection extends DataConnection {
 
     @Override
     protected boolean isDnsOk(String[] domainNameServers) {
-        if ((NULL_IP.equals(domainNameServers[0])
+        if (NULL_IP.equals(domainNameServers[0])
                 && NULL_IP.equals(domainNameServers[1])
-                && !((CDMAPhone) phone).isDnsCheckDisabled())) {
+                && !phone.isDnsCheckDisabled()) {
             return false;
         } else {
             return true;

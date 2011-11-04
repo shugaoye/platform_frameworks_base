@@ -17,8 +17,8 @@
 package android.net;
 
 import com.android.internal.util.Protocol;
-import com.android.internal.util.HierarchicalState;
-import com.android.internal.util.HierarchicalStateMachine;
+import com.android.internal.util.State;
+import com.android.internal.util.StateMachine;
 
 import android.app.AlarmManager;
 import android.app.PendingIntent;
@@ -48,14 +48,14 @@ import android.util.Log;
  *
  * @hide
  */
-public class DhcpStateMachine extends HierarchicalStateMachine {
+public class DhcpStateMachine extends StateMachine {
 
     private static final String TAG = "DhcpStateMachine";
     private static final boolean DBG = false;
 
 
     /* A StateMachine that controls the DhcpStateMachine */
-    private HierarchicalStateMachine mController;
+    private StateMachine mController;
 
     private Context mContext;
     private BroadcastReceiver mBroadcastReceiver;
@@ -99,13 +99,13 @@ public class DhcpStateMachine extends HierarchicalStateMachine {
     public static final int DHCP_SUCCESS = 1;
     public static final int DHCP_FAILURE = 2;
 
-    private HierarchicalState mDefaultState = new DefaultState();
-    private HierarchicalState mStoppedState = new StoppedState();
-    private HierarchicalState mWaitBeforeStartState = new WaitBeforeStartState();
-    private HierarchicalState mRunningState = new RunningState();
-    private HierarchicalState mWaitBeforeRenewalState = new WaitBeforeRenewalState();
+    private State mDefaultState = new DefaultState();
+    private State mStoppedState = new StoppedState();
+    private State mWaitBeforeStartState = new WaitBeforeStartState();
+    private State mRunningState = new RunningState();
+    private State mWaitBeforeRenewalState = new WaitBeforeRenewalState();
 
-    private DhcpStateMachine(Context context, HierarchicalStateMachine controller, String intf) {
+    private DhcpStateMachine(Context context, StateMachine controller, String intf) {
         super(TAG);
 
         mContext = context;
@@ -141,7 +141,7 @@ public class DhcpStateMachine extends HierarchicalStateMachine {
         setInitialState(mStoppedState);
     }
 
-    public static DhcpStateMachine makeDhcpStateMachine(Context context, HierarchicalStateMachine controller,
+    public static DhcpStateMachine makeDhcpStateMachine(Context context, StateMachine controller,
             String intf) {
         DhcpStateMachine dsm = new DhcpStateMachine(context, controller, intf);
         dsm.start();
@@ -161,7 +161,7 @@ public class DhcpStateMachine extends HierarchicalStateMachine {
         mRegisteredForPreDhcpNotification = true;
     }
 
-    class DefaultState extends HierarchicalState {
+    class DefaultState extends State {
         @Override
         public boolean processMessage(Message message) {
             if (DBG) Log.d(TAG, getName() + message.toString() + "\n");
@@ -170,7 +170,7 @@ public class DhcpStateMachine extends HierarchicalStateMachine {
                     Log.e(TAG, "Error! Failed to handle a DHCP renewal on " + mInterfaceName);
                     mDhcpRenewWakeLock.release();
                     break;
-                case HSM_QUIT_CMD:
+                case SM_QUIT_CMD:
                     mContext.unregisterReceiver(mBroadcastReceiver);
                     //let parent kill the state machine
                     return NOT_HANDLED;
@@ -183,7 +183,7 @@ public class DhcpStateMachine extends HierarchicalStateMachine {
     }
 
 
-    class StoppedState extends HierarchicalState {
+    class StoppedState extends State {
         @Override
         public void enter() {
             if (DBG) Log.d(TAG, getName() + "\n");
@@ -216,7 +216,7 @@ public class DhcpStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class WaitBeforeStartState extends HierarchicalState {
+    class WaitBeforeStartState extends State {
         @Override
         public void enter() {
             if (DBG) Log.d(TAG, getName() + "\n");
@@ -248,7 +248,7 @@ public class DhcpStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class RunningState extends HierarchicalState {
+    class RunningState extends State {
         @Override
         public void enter() {
             if (DBG) Log.d(TAG, getName() + "\n");
@@ -289,7 +289,7 @@ public class DhcpStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class WaitBeforeRenewalState extends HierarchicalState {
+    class WaitBeforeRenewalState extends State {
         @Override
         public void enter() {
             if (DBG) Log.d(TAG, getName() + "\n");

@@ -20,6 +20,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.os.Bundle;
 import android.os.HandlerThread;
 import android.os.Looper;
 import android.os.Messenger;
@@ -68,10 +69,6 @@ public class MobileDataStateTracker implements NetworkStateTracker {
     private boolean mPrivateDnsRouteSet = false;
     private boolean mDefaultRouteSet = false;
 
-    // DEFAULT and HIPRI are the same connection.  If we're one of these we need to check if
-    // the other is also disconnected before we reset sockets
-    private boolean mIsDefaultOrHipri = false;
-
     private Handler mHandler;
     private AsyncChannel mDataConnectionTrackerAc;
     private Messenger mMessenger;
@@ -86,12 +83,6 @@ public class MobileDataStateTracker implements NetworkStateTracker {
                 TelephonyManager.getDefault().getNetworkType(), tag,
                 TelephonyManager.getDefault().getNetworkTypeName());
         mApnType = networkTypeToApnType(netType);
-        if (netType == ConnectivityManager.TYPE_MOBILE ||
-                netType == ConnectivityManager.TYPE_MOBILE_HIPRI) {
-            mIsDefaultOrHipri = true;
-        }
-
-        mPhoneService = null;
     }
 
     /**
@@ -179,8 +170,6 @@ public class MobileDataStateTracker implements NetworkStateTracker {
     }
 
     private class MobileDataStateReceiver extends BroadcastReceiver {
-        IConnectivityManager mConnectivityManager;
-
         @Override
         public void onReceive(Context context, Intent intent) {
             if (intent.getAction().equals(TelephonyIntents.
@@ -217,35 +206,6 @@ public class MobileDataStateTracker implements NetworkStateTracker {
                             }
 
                             setDetailedState(DetailedState.DISCONNECTED, reason, apnName);
-                            boolean doReset = true;
-                            if (mIsDefaultOrHipri == true) {
-                                // both default and hipri must go down before we reset
-                                int typeToCheck = (Phone.APN_TYPE_DEFAULT.equals(mApnType) ?
-                                    ConnectivityManager.TYPE_MOBILE_HIPRI :
-                                    ConnectivityManager.TYPE_MOBILE);
-                                if (mConnectivityManager == null) {
-                                    IBinder b = ServiceManager.getService(
-                                            Context.CONNECTIVITY_SERVICE);
-                                    mConnectivityManager = IConnectivityManager.Stub.asInterface(b);
-                                }
-                                try {
-                                    if (mConnectivityManager != null) {
-                                        NetworkInfo info = mConnectivityManager.getNetworkInfo(
-                                                typeToCheck);
-                                        if (info.isConnected() == true) {
-                                            doReset = false;
-                                        }
-                                    }
-                                } catch (RemoteException e) {
-                                    // just go ahead with the reset
-                                    loge("Exception trying to contact ConnService: " + e);
-                                }
-                            }
-                            if (doReset && mLinkProperties != null) {
-                                String iface = mLinkProperties.getInterfaceName();
-                                if (iface != null) NetworkUtils.resetConnections(iface);
-                            }
-                            // TODO - check this
                             // can't do this here - ConnectivityService needs it to clear stuff
                             // it's ok though - just leave it to be refreshed next time
                             // we connect.
@@ -274,6 +234,21 @@ public class MobileDataStateTracker implements NetworkStateTracker {
                             }
                             setDetailedState(DetailedState.CONNECTED, reason, apnName);
                             break;
+                    }
+                } else {
+                    // There was no state change. Check if LinkProperties has been updated.
+                    if (TextUtils.equals(reason, Phone.REASON_LINK_PROPERTIES_CHANGED)) {
+                        mLinkProperties = intent.getParcelableExtra(Phone.DATA_LINK_PROPERTIES_KEY);
+                        if (mLinkProperties == null) {
+                            log("No link property in LINK_PROPERTIES change event.");
+                            mLinkProperties = new LinkProperties();
+                        }
+                        // Just update reason field in this NetworkInfo
+                        mNetworkInfo.setDetailedState(mNetworkInfo.getDetailedState(), reason,
+                                                      mNetworkInfo.getExtraInfo());
+                        Message msg = mTarget.obtainMessage(EVENT_CONFIGURATION_CHANGED,
+                                                            mNetworkInfo);
+                        msg.sendToTarget();
                     }
                 }
             } else if (intent.getAction().
@@ -411,7 +386,7 @@ public class MobileDataStateTracker implements NetworkStateTracker {
                     && lastReason != null)
                 reason = lastReason;
             mNetworkInfo.setDetailedState(state, reason, extraInfo);
-            Message msg = mTarget.obtainMessage(EVENT_STATE_CHANGED, mNetworkInfo);
+            Message msg = mTarget.obtainMessage(EVENT_STATE_CHANGED, new NetworkInfo(mNetworkInfo));
             msg.sendToTarget();
         }
     }
@@ -437,7 +412,8 @@ public class MobileDataStateTracker implements NetworkStateTracker {
                 retValue = true;
                 break;
             case Phone.APN_REQUEST_STARTED:
-                // no need to do anything - we're already due some status update intents
+                // set IDLE here , avoid the following second FAILED not sent out
+                mNetworkInfo.setDetailedState(DetailedState.IDLE, null, null);
                 retValue = true;
                 break;
             case Phone.APN_REQUEST_FAILED:
@@ -489,6 +465,25 @@ public class MobileDataStateTracker implements NetworkStateTracker {
             log("setDataEnable: X enabled=" + enabled);
         } catch (Exception e) {
             log("setDataEnable: X mAc was null" + e);
+        }
+    }
+
+    /**
+     * carrier dependency is met/unmet
+     * @param met
+     */
+    public void setDependencyMet(boolean met) {
+        Bundle bundle = Bundle.forPair(DataConnectionTracker.APN_TYPE_KEY, mApnType);
+        try {
+            log("setDependencyMet: E met=" + met);
+            Message msg = Message.obtain();
+            msg.what = DataConnectionTracker.CMD_SET_DEPENDENCY_MET;
+            msg.arg1 = (met ? DataConnectionTracker.ENABLED : DataConnectionTracker.DISABLED);
+            msg.setData(bundle);
+            mDataConnectionTrackerAc.sendMessage(msg);
+            log("setDependencyMet: X met=" + met);
+        } catch (NullPointerException e) {
+            log("setDependencyMet: X mAc was null" + e);
         }
     }
 
@@ -546,6 +541,12 @@ public class MobileDataStateTracker implements NetworkStateTracker {
                 return Phone.APN_TYPE_DUN;
             case ConnectivityManager.TYPE_MOBILE_HIPRI:
                 return Phone.APN_TYPE_HIPRI;
+            case ConnectivityManager.TYPE_MOBILE_FOTA:
+                return Phone.APN_TYPE_FOTA;
+            case ConnectivityManager.TYPE_MOBILE_IMS:
+                return Phone.APN_TYPE_IMS;
+            case ConnectivityManager.TYPE_MOBILE_CBS:
+                return Phone.APN_TYPE_CBS;
             default:
                 sloge("Error mapping networkType " + netType + " to apnType.");
                 return null;

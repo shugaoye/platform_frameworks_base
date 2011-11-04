@@ -72,6 +72,22 @@ public interface TelephonyProperties
      */
     static final String PROPERTY_OPERATOR_ISO_COUNTRY = "gsm.operator.iso-country";
 
+    /**
+     * The contents of this property is the value of the kernel command line
+     * product_type variable that corresponds to a product that supports LTE on CDMA.
+     * {@see BaseCommands#getLteOnCdmaMode()}
+     */
+    static final String PROPERTY_LTE_ON_CDMA_PRODUCT_TYPE = "telephony.lteOnCdmaProductType";
+
+    /**
+     * The contents of this property is the one of {@link Phone#LTE_ON_CDMA_TRUE} or
+     * {@link Phone#LTE_ON_CDMA_FALSE}. If absent the value will assumed to be false
+     * and the {@see #PROPERTY_LTE_ON_CDMA_PRODUCT_TYPE} will be used to determine its
+     * final value which could also be {@link Phone#LTE_ON_CDMA_FALSE}.
+     * {@see BaseCommands#getLteOnCdmaMode()}
+     */
+    static final String PROPERTY_LTE_ON_CDMA_DEVICE = "telephony.lteOnCdmaDevice";
+
     static final String CURRENT_ACTIVE_PHONE = "gsm.current.phone-type";
 
     //****** SIM Card
@@ -159,4 +175,11 @@ public interface TelephonyProperties
      * the value of config_sms_capable
      */
     static final String PROPERTY_SMS_SEND = "telephony.sms.send";
+
+    /**
+     * Set to true to indicate a test CSIM card is used in the device.
+     * This property is for testing purpose only. This should not be defined
+     * in commercial configuration.
+     */
+    static final String PROPERTY_TEST_CSIM = "persist.radio.test-csim";
 }

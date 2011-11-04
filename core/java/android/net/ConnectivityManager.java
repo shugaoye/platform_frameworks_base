@@ -164,6 +164,12 @@ public class ConnectivityManager
     public static final String EXTRA_ERRORED_TETHER = "erroredArray";
 
     /**
+     * The absence of APN..
+     * @hide
+     */
+    public static final int TYPE_NONE        = -1;
+
+    /**
      * The Default Mobile data connection.  When active, all data traffic
      * will use this connection by default.
      */
@@ -218,15 +224,35 @@ public class ConnectivityManager
 
     /** {@hide} */
     public static final int TYPE_DUMMY       = 8;
+
     /**
      * The Default Ethernet data connection.  When active, all data traffic
      * will use this connection by default.
      */
     public static final int TYPE_ETHERNET    = 9;
-    /** {@hide} TODO: Need to adjust this for WiMAX. */
-    public static final int MAX_RADIO_TYPE   = TYPE_ETHERNET;
-    /** {@hide} TODO: Need to adjust this for WiMAX. */
-    public static final int MAX_NETWORK_TYPE = TYPE_ETHERNET;
+    /**
+     * Over the air Adminstration.
+     * {@hide}
+     */
+    public static final int TYPE_MOBILE_FOTA = 10;
+
+    /**
+     * IP Multimedia Subsystem
+     * {@hide}
+     */
+    public static final int TYPE_MOBILE_IMS  = 11;
+
+    /**
+     * Carrier Branded Services
+     * {@hide}
+     */
+    public static final int TYPE_MOBILE_CBS  = 12;
+
+    /** {@hide} */
+    public static final int MAX_RADIO_TYPE   = TYPE_MOBILE_CBS;
+
+    /** {@hide} */
+    public static final int MAX_NETWORK_TYPE = TYPE_MOBILE_CBS;
 
     public static final int DEFAULT_NETWORK_PREFERENCE = TYPE_WIFI;
 
@@ -668,6 +694,18 @@ public class ConnectivityManager
             return mService.getProxy();
         } catch (RemoteException e) {
             return null;
+        }
+    }
+
+    /**
+     * @param networkType The network who's dependence has changed
+     * @param met Boolean - true if network use is ok, false if not
+     * {@hide}
+     */
+    public void setDataDependency(int networkType, boolean met) {
+        try {
+            mService.setDataDependency(networkType, met);
+        } catch (RemoteException e) {
         }
     }
 }

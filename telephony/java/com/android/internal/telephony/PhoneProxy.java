@@ -208,8 +208,8 @@ public class PhoneProxy extends Handler implements Phone {
         return mActivePhone.getActiveApnTypes();
     }
 
-    public String getActiveApnHost() {
-        return mActivePhone.getActiveApnHost();
+    public String getActiveApnHost(String apnType) {
+        return mActivePhone.getActiveApnHost(apnType);
     }
 
     public LinkProperties getLinkProperties(String apnType) {
@@ -593,10 +593,6 @@ public class PhoneProxy extends Handler implements Phone {
         mActivePhone.getDataCallList(response);
     }
 
-    public List<DataConnection> getCurrentDataConnectionList() {
-        return mActivePhone.getCurrentDataConnectionList();
-    }
-
     public void updateServiceLocation() {
         mActivePhone.updateServiceLocation();
     }
@@ -658,7 +654,11 @@ public class PhoneProxy extends Handler implements Phone {
     }
 
     public boolean isDataConnectivityPossible() {
-        return mActivePhone.isDataConnectivityPossible();
+        return mActivePhone.isDataConnectivityPossible(Phone.APN_TYPE_DEFAULT);
+    }
+
+    public boolean isDataConnectivityPossible(String apnType) {
+        return mActivePhone.isDataConnectivityPossible(apnType);
     }
 
     public String getDeviceId() {
@@ -683,6 +683,10 @@ public class PhoneProxy extends Handler implements Phone {
 
     public String getMeid() {
         return mActivePhone.getMeid();
+    }
+
+    public String getImei() {
+        return mActivePhone.getImei();
     }
 
     public PhoneSubInfo getPhoneSubInfo(){
@@ -739,6 +743,10 @@ public class PhoneProxy extends Handler implements Phone {
 
     public int getCdmaEriIconMode() {
          return mActivePhone.getCdmaEriIconMode();
+    }
+
+    public Phone getActivePhone() {
+         return mActivePhone;
     }
 
     public void sendBurstDtmf(String dtmfString, int on, int off, Message onComplete){
@@ -831,5 +839,13 @@ public class PhoneProxy extends Handler implements Phone {
 
     public boolean isCspPlmnEnabled() {
         return mActivePhone.isCspPlmnEnabled();
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int getLteOnCdmaMode() {
+        return mActivePhone.getLteOnCdmaMode();
     }
 }

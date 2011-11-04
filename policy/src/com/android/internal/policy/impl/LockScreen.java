@@ -126,7 +126,12 @@ class LockScreen extends LinearLayout implements KeyguardScreen,
         /**
          * The sim card is locked.
          */
-        SimLocked(true);
+        SimLocked(true),
+
+        /**
+         * The sim card is permanently disabled due to puk unlock failure
+         */
+        SimPermDisabled(false);
 
         private final boolean mShowStatusLines;
 
@@ -232,7 +237,7 @@ class LockScreen extends LinearLayout implements KeyguardScreen,
 
         /** {@inheritDoc} */
         public void onGrabbedStateChange(View v, int grabbedState) {
-            if (DBG) Log.v(TAG, "*** LockScreen accel is " 
+            if (DBG) Log.v(TAG, "*** LockScreen accel is "
                     + (mEnergyWave.isHardwareAccelerated() ? "on":"off"));
             // Don't poke the wake lock when returning to a state where the handle is
             // not grabbed since that can happen when the system (instead of the user)
@@ -450,7 +455,9 @@ class LockScreen extends LinearLayout implements KeyguardScreen,
      */
     private Status getCurrentStatus(IccCard.State simState) {
         boolean missingAndNotProvisioned = (!mUpdateMonitor.isDeviceProvisioned()
-                && simState == IccCard.State.ABSENT);
+                && (simState == IccCard.State.ABSENT
+                        || simState == IccCard.State.PERM_DISABLED));
+
         if (missingAndNotProvisioned) {
             return Status.SimMissingLocked;
         }
@@ -468,6 +475,8 @@ class LockScreen extends LinearLayout implements KeyguardScreen,
                 return Status.SimPukLocked;
             case READY:
                 return Status.Normal;
+            case PERM_DISABLED:
+                return Status.SimPermDisabled;
             case UNKNOWN:
                 return Status.SimMissing;
         }
@@ -534,11 +543,23 @@ class LockScreen extends LinearLayout implements KeyguardScreen,
             case SimMissing:
                 // text
                 mStatusView.setCarrierText(R.string.lockscreen_missing_sim_message_short);
-                mScreenLocked.setText(R.string.lockscreen_missing_sim_instructions);
+                mScreenLocked.setText(R.string.lockscreen_missing_sim_instructions_long);
 
                 // layout
                 mScreenLocked.setVisibility(View.VISIBLE);
-                mEmergencyCallText.setVisibility(View.VISIBLE);
+                mLockPatternUtils.updateEmergencyCallText(mEmergencyCallText);
+                enableUnlock(); // do not need to show the e-call button; user may unlock
+                break;
+
+            case SimPermDisabled:
+                // text
+                mStatusView.setCarrierText(R.string.lockscreen_missing_sim_message_short);
+                mScreenLocked.setText(
+                        R.string.lockscreen_permanent_disabled_sim_instructions);
+
+                // layout
+                mScreenLocked.setVisibility(View.VISIBLE);
+                mLockPatternUtils.updateEmergencyCallText(mEmergencyCallText);
                 enableUnlock(); // do not need to show the e-call button; user may unlock
                 break;
 
@@ -552,8 +573,8 @@ class LockScreen extends LinearLayout implements KeyguardScreen,
 
                 // layout
                 mScreenLocked.setVisibility(View.VISIBLE);
-                mEmergencyCallText.setVisibility(View.VISIBLE);
-                mEmergencyCallButton.setVisibility(View.VISIBLE);
+                mLockPatternUtils.updateEmergencyCallText(mEmergencyCallText);
+                mLockPatternUtils.updateEmergencyCallButtonState(mEmergencyCallButton);
                 disableUnlock();
                 break;
 
@@ -579,10 +600,15 @@ class LockScreen extends LinearLayout implements KeyguardScreen,
                 mScreenLocked.setText(R.string.lockscreen_sim_puk_locked_instructions);
 
                 // layout
-                mScreenLocked.setVisibility(View.VISIBLE);
-                mEmergencyCallText.setVisibility(View.VISIBLE);
-                mEmergencyCallButton.setVisibility(View.VISIBLE);
-                disableUnlock();
+                mLockPatternUtils.updateEmergencyCallText(mEmergencyCallText);
+                mLockPatternUtils.updateEmergencyCallButtonState(mEmergencyCallButton);
+                if (mLockPatternUtils.isPukUnlockScreenEnable()) {
+                    mScreenLocked.setVisibility(View.INVISIBLE);
+                    enableUnlock();
+                } else {
+                    mScreenLocked.setVisibility(View.VISIBLE);
+                    disableUnlock();
+                }
                 break;
         }
     }

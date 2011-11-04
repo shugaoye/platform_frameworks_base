@@ -50,6 +50,7 @@ public class WifiStateTracker implements NetworkStateTracker {
     private LinkProperties mLinkProperties;
     private LinkCapabilities mLinkCapabilities;
     private NetworkInfo mNetworkInfo;
+    private NetworkInfo.State mLastState = NetworkInfo.State.UNKNOWN;
 
     /* For sending events to connectivity service handler */
     private Handler mCsHandler;
@@ -159,7 +160,7 @@ public class WifiStateTracker implements NetworkStateTracker {
      * Fetch NetworkInfo for the network
      */
     public NetworkInfo getNetworkInfo() {
-        return mNetworkInfo;
+        return new NetworkInfo(mNetworkInfo);
     }
 
     /**
@@ -217,7 +218,16 @@ public class WifiStateTracker implements NetworkStateTracker {
                 if (mLinkCapabilities == null) {
                     mLinkCapabilities = new LinkCapabilities();
                 }
-                Message msg = mCsHandler.obtainMessage(EVENT_STATE_CHANGED, mNetworkInfo);
+                // don't want to send redundent state messages
+                // TODO can this be fixed in WifiStateMachine?
+                NetworkInfo.State state = mNetworkInfo.getState();
+                if (mLastState == state) {
+                    return;
+                } else {
+                    mLastState = state;
+                }
+                Message msg = mCsHandler.obtainMessage(EVENT_STATE_CHANGED,
+                        new NetworkInfo(mNetworkInfo));
                 msg.sendToTarget();
             } else if (intent.getAction().equals(WifiManager.LINK_CONFIGURATION_CHANGED_ACTION)) {
                 mLinkProperties = (LinkProperties) intent.getParcelableExtra(
@@ -228,4 +238,7 @@ public class WifiStateTracker implements NetworkStateTracker {
         }
     }
 
+    public void setDependencyMet(boolean met) {
+        // not supported on this network
+    }
 }

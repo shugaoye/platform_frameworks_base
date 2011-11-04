@@ -18,16 +18,28 @@ package com.android.internal.telephony;
 
 import static android.Manifest.permission.READ_PHONE_STATE;
 import android.app.ActivityManagerNative;
+import android.app.AlertDialog;
+import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
+import android.content.res.Resources;
 import android.os.AsyncResult;
 import android.os.Handler;
 import android.os.Message;
+import android.os.Power;
+import android.os.PowerManager;
 import android.os.Registrant;
 import android.os.RegistrantList;
 import android.util.Log;
+import android.view.WindowManager;
 
 import com.android.internal.telephony.PhoneBase;
 import com.android.internal.telephony.CommandsInterface.RadioState;
+import com.android.internal.telephony.gsm.SIMRecords;
+
+import android.os.SystemProperties;
+
+import com.android.internal.R;
 
 /**
  * {@hide}
@@ -72,6 +84,9 @@ public abstract class IccCard {
     static public final String INTENT_VALUE_LOCKED_ON_PUK = "PUK";
     /* NETWORK means ICC is locked on NETWORK PERSONALIZATION */
     static public final String INTENT_VALUE_LOCKED_NETWORK = "NETWORK";
+    /* PERM_DISABLED means ICC is permanently disabled due to puk fails */
+    static public final String INTENT_VALUE_ABSENT_ON_PERM_DISABLED = "PERM_DISABLED";
+
 
     protected static final int EVENT_ICC_LOCKED_OR_ABSENT = 1;
     private static final int EVENT_GET_ICC_STATUS_DONE = 2;
@@ -84,6 +99,9 @@ public abstract class IccCard {
     private static final int EVENT_CHANGE_ICC_PASSWORD_DONE = 9;
     private static final int EVENT_QUERY_FACILITY_FDN_DONE = 10;
     private static final int EVENT_CHANGE_FACILITY_FDN_DONE = 11;
+    private static final int EVENT_ICC_STATUS_CHANGED = 12;
+    private static final int EVENT_CARD_REMOVED = 13;
+    private static final int EVENT_CARD_ADDED = 14;
 
     /*
       UNKNOWN is a transient state, for example, after uesr inputs ICC pin under
@@ -97,10 +115,17 @@ public abstract class IccCard {
         PUK_REQUIRED,
         NETWORK_LOCKED,
         READY,
-        NOT_READY;
+        NOT_READY,
+        PERM_DISABLED;
 
         public boolean isPinLocked() {
             return ((this == PIN_REQUIRED) || (this == PUK_REQUIRED));
+        }
+
+        public boolean iccCardExist() {
+            return ((this == PIN_REQUIRED) || (this == PUK_REQUIRED)
+                    || (this == NETWORK_LOCKED) || (this == READY)
+                    || (this == PERM_DISABLED));
         }
     }
 
@@ -137,11 +162,14 @@ public abstract class IccCard {
 
     public IccCard(PhoneBase phone, String logTag, Boolean dbg) {
         mPhone = phone;
+        mPhone.mCM.registerForIccStatusChanged(mHandler, EVENT_ICC_STATUS_CHANGED, null);
         mLogTag = logTag;
         mDbg = dbg;
     }
 
-    abstract public void dispose();
+    public void dispose() {
+        mPhone.mCM.unregisterForIccStatusChanged(mHandler);
+    }
 
     protected void finalize() {
         if(mDbg) Log.d(mLogTag, "IccCard finalized");
@@ -393,6 +421,9 @@ public abstract class IccCard {
         boolean transitionedIntoPinLocked;
         boolean transitionedIntoAbsent;
         boolean transitionedIntoNetworkLocked;
+        boolean transitionedIntoPermBlocked;
+        boolean isIccCardRemoved;
+        boolean isIccCardAdded;
 
         State oldState, newState;
 
@@ -409,23 +440,93 @@ public abstract class IccCard {
         transitionedIntoAbsent = (oldState != State.ABSENT && newState == State.ABSENT);
         transitionedIntoNetworkLocked = (oldState != State.NETWORK_LOCKED
                 && newState == State.NETWORK_LOCKED);
+        transitionedIntoPermBlocked = (oldState != State.PERM_DISABLED
+                && newState == State.PERM_DISABLED);
+        isIccCardRemoved = (oldState != null &&
+                        oldState.iccCardExist() && newState == State.ABSENT);
+        isIccCardAdded = (oldState == State.ABSENT &&
+                        newState != null && newState.iccCardExist());
 
         if (transitionedIntoPinLocked) {
-            if(mDbg) log("Notify SIM pin or puk locked.");
+            if (mDbg) log("Notify SIM pin or puk locked.");
             mPinLockedRegistrants.notifyRegistrants();
             broadcastIccStateChangedIntent(INTENT_VALUE_ICC_LOCKED,
                     (newState == State.PIN_REQUIRED) ?
                        INTENT_VALUE_LOCKED_ON_PIN : INTENT_VALUE_LOCKED_ON_PUK);
         } else if (transitionedIntoAbsent) {
-            if(mDbg) log("Notify SIM missing.");
+            if (mDbg) log("Notify SIM missing.");
             mAbsentRegistrants.notifyRegistrants();
             broadcastIccStateChangedIntent(INTENT_VALUE_ICC_ABSENT, null);
         } else if (transitionedIntoNetworkLocked) {
-            if(mDbg) log("Notify SIM network locked.");
+            if (mDbg) log("Notify SIM network locked.");
             mNetworkLockedRegistrants.notifyRegistrants();
             broadcastIccStateChangedIntent(INTENT_VALUE_ICC_LOCKED,
                   INTENT_VALUE_LOCKED_NETWORK);
+        } else if (transitionedIntoPermBlocked) {
+            if (mDbg) log("Notify SIM permanently disabled.");
+            broadcastIccStateChangedIntent(INTENT_VALUE_ICC_ABSENT,
+                    INTENT_VALUE_ABSENT_ON_PERM_DISABLED);
         }
+
+        if (isIccCardRemoved) {
+            mHandler.sendMessage(mHandler.obtainMessage(EVENT_CARD_REMOVED, null));
+        } else if (isIccCardAdded) {
+            mHandler.sendMessage(mHandler.obtainMessage(EVENT_CARD_ADDED, null));
+        }
+
+
+
+        /*
+         * TODO: We need to try to remove this, maybe if the RIL sends up a RIL_UNSOL_SIM_REFRESH?
+         */
+        if (oldState != State.READY && newState == State.READY &&
+                mPhone.getLteOnCdmaMode() == Phone.LTE_ON_CDMA_TRUE) {
+            if (mPhone.mIccRecords instanceof SIMRecords) {
+                ((SIMRecords)mPhone.mIccRecords).onSimReady();
+            }
+        }
+
+    }
+
+    private void onIccSwap(boolean isAdded) {
+        // TODO: Here we assume the device can't handle SIM hot-swap
+        //      and has to reboot. We may want to add a property,
+        //      e.g. REBOOT_ON_SIM_SWAP, to indicate if modem support
+        //      hot-swap.
+        DialogInterface.OnClickListener listener = null;
+
+
+        // TODO: SimRecords is not reset while SIM ABSENT (only reset while
+        //       Radio_off_or_not_available). Have to reset in both both
+        //       added or removed situation.
+        listener = new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                if (which == DialogInterface.BUTTON_POSITIVE) {
+                    if (mDbg) log("Reboot due to SIM swap");
+                    PowerManager pm = (PowerManager) mPhone.getContext()
+                    .getSystemService(Context.POWER_SERVICE);
+                    pm.reboot("SIM is added.");
+                }
+            }
+
+        };
+
+        Resources r = Resources.getSystem();
+
+        String title = (isAdded) ? r.getString(R.string.sim_added_title) :
+            r.getString(R.string.sim_removed_title);
+        String message = (isAdded) ? r.getString(R.string.sim_added_message) :
+            r.getString(R.string.sim_removed_message);
+        String buttonTxt = r.getString(R.string.sim_restart_button);
+
+        AlertDialog dialog = new AlertDialog.Builder(mPhone.getContext())
+            .setTitle(title)
+            .setMessage(message)
+            .setPositiveButton(buttonTxt, listener)
+            .create();
+        dialog.getWindow().setType(WindowManager.LayoutParams.TYPE_SYSTEM_ALERT);
+        dialog.show();
     }
 
     /**
@@ -588,6 +689,16 @@ public abstract class IccCard {
                                                         = ar.exception;
                     ((Message)ar.userObj).sendToTarget();
                     break;
+                case EVENT_ICC_STATUS_CHANGED:
+                    Log.d(mLogTag, "Received Event EVENT_ICC_STATUS_CHANGED");
+                    mPhone.mCM.getIccCardStatus(obtainMessage(EVENT_GET_ICC_STATUS_DONE));
+                    break;
+                case EVENT_CARD_REMOVED:
+                    onIccSwap(false);
+                    break;
+                case EVENT_CARD_ADDED:
+                    onIccSwap(true);
+                    break;
                 default:
                     Log.e(mLogTag, "[IccCard] Unknown Event " + msg.what);
             }
@@ -612,61 +723,102 @@ public abstract class IccCard {
             currentRadioState == RadioState.SIM_NOT_READY     ||
             currentRadioState == RadioState.RUIM_NOT_READY    ||
             currentRadioState == RadioState.NV_NOT_READY      ||
-            currentRadioState == RadioState.NV_READY) {
+            (currentRadioState == RadioState.NV_READY &&
+                    (mPhone.getLteOnCdmaMode() != Phone.LTE_ON_CDMA_TRUE))) {
             return IccCard.State.NOT_READY;
         }
 
         if( currentRadioState == RadioState.SIM_LOCKED_OR_ABSENT  ||
             currentRadioState == RadioState.SIM_READY             ||
             currentRadioState == RadioState.RUIM_LOCKED_OR_ABSENT ||
-            currentRadioState == RadioState.RUIM_READY) {
+            currentRadioState == RadioState.RUIM_READY ||
+            (currentRadioState == RadioState.NV_READY &&
+                    (mPhone.getLteOnCdmaMode() == Phone.LTE_ON_CDMA_TRUE))) {
 
-            int index;
+            State csimState =
+                getAppState(mIccCardStatus.getCdmaSubscriptionAppIndex());
+            State usimState =
+                getAppState(mIccCardStatus.getGsmUmtsSubscriptionAppIndex());
+
+            if(mDbg) log("USIM=" + usimState + " CSIM=" + csimState);
+
+            if (mPhone.getLteOnCdmaMode() == Phone.LTE_ON_CDMA_TRUE) {
+                // UICC card contains both USIM and CSIM
+                // Return consolidated status
+                return getConsolidatedState(csimState, usimState, csimState);
+            }
 
             // check for CDMA radio technology
             if (currentRadioState == RadioState.RUIM_LOCKED_OR_ABSENT ||
                 currentRadioState == RadioState.RUIM_READY) {
-                index = mIccCardStatus.getCdmaSubscriptionAppIndex();
+                return csimState;
             }
-            else {
-                index = mIccCardStatus.getGsmUmtsSubscriptionAppIndex();
-            }
-
-            IccCardApplication app;
-            if (index >= 0 && index < IccCardStatus.CARD_MAX_APPS) {
-                app = mIccCardStatus.getApplication(index);
-            } else {
-                Log.e(mLogTag, "[IccCard] Invalid Subscription Application index:" + index);
-                return IccCard.State.ABSENT;
-            }
-
-            if (app == null) {
-                Log.e(mLogTag, "[IccCard] Subscription Application in not present");
-                return IccCard.State.ABSENT;
-            }
-
-            // check if PIN required
-            if (app.app_state.isPinRequired()) {
-                return IccCard.State.PIN_REQUIRED;
-            }
-            if (app.app_state.isPukRequired()) {
-                return IccCard.State.PUK_REQUIRED;
-            }
-            if (app.app_state.isSubscriptionPersoEnabled()) {
-                return IccCard.State.NETWORK_LOCKED;
-            }
-            if (app.app_state.isAppReady()) {
-                return IccCard.State.READY;
-            }
-            if (app.app_state.isAppNotReady()) {
-                return IccCard.State.NOT_READY;
-            }
-            return IccCard.State.NOT_READY;
+            return usimState;
         }
 
         return IccCard.State.ABSENT;
     }
 
+    private State getAppState(int appIndex) {
+        IccCardApplication app;
+        if (appIndex >= 0 && appIndex < IccCardStatus.CARD_MAX_APPS) {
+            app = mIccCardStatus.getApplication(appIndex);
+        } else {
+            Log.e(mLogTag, "[IccCard] Invalid Subscription Application index:" + appIndex);
+            return IccCard.State.ABSENT;
+        }
+
+        if (app == null) {
+            Log.e(mLogTag, "[IccCard] Subscription Application in not present");
+            return IccCard.State.ABSENT;
+        }
+
+        // check if PIN required
+        if (app.pin1.isPermBlocked()) {
+            return IccCard.State.PERM_DISABLED;
+        }
+        if (app.app_state.isPinRequired()) {
+            return IccCard.State.PIN_REQUIRED;
+        }
+        if (app.app_state.isPukRequired()) {
+            return IccCard.State.PUK_REQUIRED;
+        }
+        if (app.app_state.isSubscriptionPersoEnabled()) {
+            return IccCard.State.NETWORK_LOCKED;
+        }
+        if (app.app_state.isAppReady()) {
+            return IccCard.State.READY;
+        }
+        if (app.app_state.isAppNotReady()) {
+            return IccCard.State.NOT_READY;
+        }
+        return IccCard.State.NOT_READY;
+    }
+
+    private State getConsolidatedState(State left, State right, State preferredState) {
+        // Check if either is absent.
+        if (right == IccCard.State.ABSENT) return left;
+        if (left == IccCard.State.ABSENT) return right;
+
+        // Only if both are ready, return ready
+        if ((left == IccCard.State.READY) && (right == IccCard.State.READY)) {
+            return State.READY;
+        }
+
+        // Case one is ready, but the other is not.
+        if (((right == IccCard.State.NOT_READY) && (left == IccCard.State.READY)) ||
+            ((left == IccCard.State.NOT_READY) && (right == IccCard.State.READY))) {
+            return IccCard.State.NOT_READY;
+        }
+
+        // At this point, the other state is assumed to be one of locked state
+        if (right == IccCard.State.NOT_READY) return left;
+        if (left == IccCard.State.NOT_READY) return right;
+
+        // At this point, FW currently just assumes the status will be
+        // consistent across the applications...
+        return preferredState;
+    }
 
     public boolean isApplicationOnIcc(IccCardApplication.AppType type) {
         if (mIccCardStatus == null) return false;

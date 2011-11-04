@@ -33,7 +33,9 @@ import android.provider.Settings;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
 import android.util.Log;
+import android.view.View;
 import android.widget.Button;
+import android.widget.TextView;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -775,6 +777,16 @@ public class LockPatternUtils {
         setBoolean(LOCKOUT_PERMANENT_KEY, locked);
     }
 
+    public boolean isEmergencyCallCapable() {
+        return mContext.getResources().getBoolean(
+                com.android.internal.R.bool.config_voice_capable);
+    }
+
+    public boolean isPukUnlockScreenEnable() {
+        return mContext.getResources().getBoolean(
+                com.android.internal.R.bool.config_enable_puk_unlock_screen);
+    }
+
     /**
      * @return A formatted string of the next alarm (for showing on the lock screen),
      *   or null if there is no next alarm.
@@ -827,11 +839,22 @@ public class LockPatternUtils {
     }
 
     /**
-     * Sets the text on the emergency button to indicate what action will be taken.
+     * Sets the emergency button visibility based on isEmergencyCallCapable().
+     *
+     * If the emergency button is visible, sets the text on the emergency button
+     * to indicate what action will be taken.
+     *
      * If there's currently a call in progress, the button will take them to the call
      * @param button the button to update
      */
     public void updateEmergencyCallButtonState(Button button) {
+        if (isEmergencyCallCapable()) {
+            button.setVisibility(View.VISIBLE);
+        } else {
+            button.setVisibility(View.GONE);
+            return;
+        }
+
         int newState = TelephonyManager.getDefault().getCallState();
         int textId;
         if (newState == TelephonyManager.CALL_STATE_OFFHOOK) {
@@ -845,6 +868,18 @@ public class LockPatternUtils {
             button.setCompoundDrawablesWithIntrinsicBounds(emergencyIcon, 0, 0, 0);
         }
         button.setText(textId);
+    }
+
+    /**
+     * Sets the visibility of emergency call prompt based on emergency capable
+     * @param emergencyText the emergency call text to be updated
+     */
+    public void updateEmergencyCallText(TextView emergencyText) {
+        if (isEmergencyCallCapable()) {
+            emergencyText.setVisibility(View.VISIBLE);
+        } else {
+            emergencyText.setVisibility(View.GONE);
+        }
     }
 
     /**

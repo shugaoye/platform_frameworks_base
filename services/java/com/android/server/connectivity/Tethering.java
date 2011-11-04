@@ -49,14 +49,17 @@ import android.provider.Settings;
 import android.util.Log;
 
 import com.android.internal.telephony.Phone;
-import com.android.internal.util.HierarchicalState;
-import com.android.internal.util.HierarchicalStateMachine;
+import com.android.internal.util.IState;
+import com.android.internal.util.State;
+import com.android.internal.util.StateMachine;
 
 import java.io.FileDescriptor;
 import java.io.PrintWriter;
 import java.net.InetAddress;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.Set;
 /**
@@ -81,7 +84,15 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
     private String[] mTetherableUsbRegexs;
     private String[] mTetherableWifiRegexs;
     private String[] mTetherableBluetoothRegexs;
-    private String[] mUpstreamIfaceRegexs;
+    private Collection<Integer> mUpstreamIfaceTypes;
+
+    private static final Integer MOBILE_TYPE = new Integer(ConnectivityManager.TYPE_MOBILE);
+    private static final Integer HIPRI_TYPE = new Integer(ConnectivityManager.TYPE_MOBILE_HIPRI);
+    private static final Integer DUN_TYPE = new Integer(ConnectivityManager.TYPE_MOBILE_DUN);
+
+    // if we have to connect to mobile, what APN type should we use?  Calculated by examining the
+    // upstream type list and the DUN_REQUIRED secure-setting
+    private int mPreferredUpstreamMobileApn = ConnectivityManager.TYPE_NONE;
 
     private Looper mLooper;
     private HandlerThread mThread;
@@ -119,10 +130,7 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
     private static final String DNS_DEFAULT_SERVER1 = "8.8.8.8";
     private static final String DNS_DEFAULT_SERVER2 = "8.8.4.4";
 
-    // resampled each time we turn on tethering - used as cache for settings/config-val
-    private boolean mDunRequired;  // configuration info - must use DUN apn on 3g
-
-    private HierarchicalStateMachine mTetherMasterSM;
+    private StateMachine mTetherMasterSM;
 
     private Notification mTetheredNotification;
 
@@ -188,7 +196,6 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
             mDhcpRange[12] = DHCP_DEFAULT_RANGE7_START;
             mDhcpRange[13] = DHCP_DEFAULT_RANGE7_STOP;
         }
-        mDunRequired = false; // resample when we turn on
 
         mTetherableUsbRegexs = context.getResources().getStringArray(
                 com.android.internal.R.array.config_tether_usb_regexs);
@@ -196,8 +203,15 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
                 com.android.internal.R.array.config_tether_wifi_regexs);
         mTetherableBluetoothRegexs = context.getResources().getStringArray(
                 com.android.internal.R.array.config_tether_bluetooth_regexs);
-        mUpstreamIfaceRegexs = context.getResources().getStringArray(
-                com.android.internal.R.array.config_tether_upstream_regexs);
+        int ifaceTypes[] = context.getResources().getIntArray(
+                com.android.internal.R.array.config_tether_upstream_types);
+        mUpstreamIfaceTypes = new ArrayList();
+        for (int i : ifaceTypes) {
+            mUpstreamIfaceTypes.add(new Integer(i));
+        }
+
+        // check if the upstream type list needs to be modified due to secure-settings
+        checkDunRequired();
 
         // TODO - remove and rely on real notifications of the current iface
         mDnsServers = new String[2];
@@ -601,16 +615,44 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
         return mTetherableBluetoothRegexs;
     }
 
-    public String[] getUpstreamIfaceRegexs() {
-        return mUpstreamIfaceRegexs;
+    public int[] getUpstreamIfaceTypes() {
+        int values[] = new int[mUpstreamIfaceTypes.size()];
+        Iterator<Integer> iterator = mUpstreamIfaceTypes.iterator();
+        for (int i=0; i < mUpstreamIfaceTypes.size(); i++) {
+            values[i] = iterator.next();
+        }
+        return values;
     }
 
-    public boolean isDunRequired() {
-        boolean defaultVal = mContext.getResources().getBoolean(
-                com.android.internal.R.bool.config_tether_dun_required);
-        boolean result = (Settings.Secure.getInt(mContext.getContentResolver(),
-                Settings.Secure.TETHER_DUN_REQUIRED, (defaultVal ? 1 : 0)) == 1);
-        return result;
+    public void checkDunRequired() {
+        int requiredApn = ((Settings.Secure.getInt(mContext.getContentResolver(),
+                Settings.Secure.TETHER_DUN_REQUIRED, 0) == 1) ?
+                ConnectivityManager.TYPE_MOBILE_DUN :
+                ConnectivityManager.TYPE_MOBILE_HIPRI);
+        if (mPreferredUpstreamMobileApn != requiredApn) {
+            if (requiredApn == ConnectivityManager.TYPE_MOBILE_DUN) {
+                while (mUpstreamIfaceTypes.contains(MOBILE_TYPE)) {
+                    mUpstreamIfaceTypes.remove(MOBILE_TYPE);
+                }
+                while (mUpstreamIfaceTypes.contains(HIPRI_TYPE)) {
+                    mUpstreamIfaceTypes.remove(HIPRI_TYPE);
+                }
+                if (mUpstreamIfaceTypes.contains(DUN_TYPE) == false) {
+                    mUpstreamIfaceTypes.add(DUN_TYPE);
+                }
+            } else {
+                while (mUpstreamIfaceTypes.contains(DUN_TYPE)) {
+                    mUpstreamIfaceTypes.remove(DUN_TYPE);
+                }
+                if (mUpstreamIfaceTypes.contains(MOBILE_TYPE) == false) {
+                    mUpstreamIfaceTypes.add(MOBILE_TYPE);
+                }
+                if (mUpstreamIfaceTypes.contains(HIPRI_TYPE) == false) {
+                    mUpstreamIfaceTypes.add(HIPRI_TYPE);
+                }
+            }
+            mPreferredUpstreamMobileApn = requiredApn;
+        }
     }
 
     public String[] getTetheredIfaces() {
@@ -667,8 +709,15 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
         return retVal;
     }
 
+    //TODO: Temporary handling upstream change triggered without
+    //      CONNECTIVITY_ACTION. Only to accomodate interface
+    //      switch during HO.
+    //      @see bug/4455071
+    public void handleTetherIfaceChange() {
+        mTetherMasterSM.sendMessage(TetherMasterSM.CMD_UPSTREAM_CHANGED);
+    }
 
-    class TetherInterfaceSM extends HierarchicalStateMachine {
+    class TetherInterfaceSM extends StateMachine {
         // notification from the master SM that it's not in tether mode
         static final int CMD_TETHER_MODE_DEAD            =  1;
         // request from the user that it wants to tether
@@ -694,13 +743,13 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
         // the upstream connection has changed
         static final int CMD_TETHER_CONNECTION_CHANGED   = 12;
 
-        private HierarchicalState mDefaultState;
+        private State mDefaultState;
 
-        private HierarchicalState mInitialState;
-        private HierarchicalState mStartingState;
-        private HierarchicalState mTetheredState;
+        private State mInitialState;
+        private State mStartingState;
+        private State mTetheredState;
 
-        private HierarchicalState mUnavailableState;
+        private State mUnavailableState;
 
         private boolean mAvailable;
         private boolean mTethered;
@@ -732,7 +781,7 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
         public String toString() {
             String res = new String();
             res += mIfaceName + " - ";
-            HierarchicalState current = getCurrentState();
+            IState current = getCurrentState();
             if (current == mInitialState) res += "InitialState";
             if (current == mStartingState) res += "StartingState";
             if (current == mTetheredState) res += "TetheredState";
@@ -782,7 +831,7 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
             return (mLastError != ConnectivityManager.TETHER_ERROR_NO_ERROR);
         }
 
-        class InitialState extends HierarchicalState {
+        class InitialState extends State {
             @Override
             public void enter() {
                 setAvailable(true);
@@ -812,7 +861,7 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
             }
         }
 
-        class StartingState extends HierarchicalState {
+        class StartingState extends State {
             @Override
             public void enter() {
                 setAvailable(false);
@@ -870,7 +919,7 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
             }
         }
 
-        class TetheredState extends HierarchicalState {
+        class TetheredState extends State {
             @Override
             public void enter() {
                 IBinder b = ServiceManager.getService(Context.NETWORKMANAGEMENT_SERVICE);
@@ -1034,7 +1083,7 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
             }
         }
 
-        class UnavailableState extends HierarchicalState {
+        class UnavailableState extends State {
             @Override
             public void enter() {
                 setAvailable(false);
@@ -1064,7 +1113,7 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
 
     }
 
-    class TetherMasterSM extends HierarchicalStateMachine {
+    class TetherMasterSM extends StateMachine {
         // an interface SM has requested Tethering
         static final int CMD_TETHER_MODE_REQUESTED   = 1;
         // an interface SM has unrequested Tethering
@@ -1082,19 +1131,19 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
         // We do not flush the old ones.
         private int mSequenceNumber;
 
-        private HierarchicalState mInitialState;
-        private HierarchicalState mTetherModeAliveState;
+        private State mInitialState;
+        private State mTetherModeAliveState;
 
-        private HierarchicalState mSetIpForwardingEnabledErrorState;
-        private HierarchicalState mSetIpForwardingDisabledErrorState;
-        private HierarchicalState mStartTetheringErrorState;
-        private HierarchicalState mStopTetheringErrorState;
-        private HierarchicalState mSetDnsForwardersErrorState;
+        private State mSetIpForwardingEnabledErrorState;
+        private State mSetIpForwardingDisabledErrorState;
+        private State mStartTetheringErrorState;
+        private State mStopTetheringErrorState;
+        private State mSetDnsForwardersErrorState;
 
         private ArrayList mNotifyList;
 
         private int mCurrentConnectionSequence;
-        private boolean mMobileReserved = false;
+        private int mMobileApnReserved = ConnectivityManager.TYPE_NONE;
 
         private String mUpstreamIfaceName = null;
 
@@ -1125,7 +1174,7 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
             setInitialState(mInitialState);
         }
 
-        class TetherMasterUtilState extends HierarchicalState {
+        class TetherMasterUtilState extends State {
             protected final static boolean TRY_TO_SETUP_MOBILE_CONNECTION = true;
             protected final static boolean WAIT_FOR_NETWORK_TO_SETTLE     = false;
 
@@ -1133,22 +1182,34 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
             public boolean processMessage(Message m) {
                 return false;
             }
-            protected boolean turnOnMobileConnection() {
+            protected String enableString(int apnType) {
+                switch (apnType) {
+                case ConnectivityManager.TYPE_MOBILE_DUN:
+                    return Phone.FEATURE_ENABLE_DUN_ALWAYS;
+                case ConnectivityManager.TYPE_MOBILE:
+                case ConnectivityManager.TYPE_MOBILE_HIPRI:
+                    return Phone.FEATURE_ENABLE_HIPRI;
+                }
+                return null;
+            }
+            protected boolean turnOnUpstreamMobileConnection(int apnType) {
                 boolean retValue = true;
-                if (mMobileReserved) return retValue;
+                if (apnType == ConnectivityManager.TYPE_NONE) return false;
+                if (apnType != mMobileApnReserved) turnOffUpstreamMobileConnection();
                 IBinder b = ServiceManager.getService(Context.CONNECTIVITY_SERVICE);
                 IConnectivityManager service = IConnectivityManager.Stub.asInterface(b);
                 int result = Phone.APN_REQUEST_FAILED;
+                String enableString = enableString(apnType);
+                if (enableString == null) return false;
                 try {
                     result = service.startUsingNetworkFeature(ConnectivityManager.TYPE_MOBILE,
-                            (mDunRequired ? Phone.FEATURE_ENABLE_DUN_ALWAYS :
-                            Phone.FEATURE_ENABLE_HIPRI), new Binder());
+                            enableString, new Binder());
                 } catch (Exception e) {
                 }
                 switch (result) {
                 case Phone.APN_ALREADY_ACTIVE:
                 case Phone.APN_REQUEST_STARTED:
-                    mMobileReserved = true;
+                    mMobileApnReserved = apnType;
                     Message m = obtainMessage(CMD_CELL_CONNECTION_RENEW);
                     m.arg1 = ++mCurrentConnectionSequence;
                     sendMessageDelayed(m, CELL_CONNECTION_RENEW_MS);
@@ -1161,19 +1222,18 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
 
                 return retValue;
             }
-            protected boolean turnOffMobileConnection() {
-                if (mMobileReserved) {
+            protected boolean turnOffUpstreamMobileConnection() {
+                if (mMobileApnReserved != ConnectivityManager.TYPE_NONE) {
                     IBinder b = ServiceManager.getService(Context.CONNECTIVITY_SERVICE);
                     IConnectivityManager service =
                             IConnectivityManager.Stub.asInterface(b);
                     try {
                         service.stopUsingNetworkFeature(ConnectivityManager.TYPE_MOBILE,
-                                (mDunRequired? Phone.FEATURE_ENABLE_DUN_ALWAYS :
-                                             Phone.FEATURE_ENABLE_HIPRI));
+                                enableString(mMobileApnReserved));
                     } catch (Exception e) {
                         return false;
                     }
-                    mMobileReserved = false;
+                    mMobileApnReserved = ConnectivityManager.TYPE_NONE;
                 }
                 return true;
             }
@@ -1225,111 +1285,55 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
                 transitionTo(mInitialState);
                 return true;
             }
-            protected String findActiveUpstreamIface() {
-                // check for what iface we can use - if none found switch to error.
-                IBinder b = ServiceManager.getService(Context.CONNECTIVITY_SERVICE);
-                IConnectivityManager cm = IConnectivityManager.Stub.asInterface(b);
-
-                try {
-                    LinkProperties defaultProp = cm.getActiveLinkProperties();
-                    if (defaultProp != null) {
-                        String iface = defaultProp.getInterfaceName();
-                        for(String regex : mUpstreamIfaceRegexs) {
-                            if (iface.matches(regex)) return iface;
-                        }
-                    }
-                } catch (RemoteException e) { }
-
-                b = ServiceManager.getService(Context.NETWORKMANAGEMENT_SERVICE);
-                INetworkManagementService service = INetworkManagementService.Stub.asInterface(b);
-
-                String[] ifaces = new String[0];
-                try {
-                    ifaces = service.listInterfaces();
-                } catch (Exception e) {
-                    Log.e(TAG, "Error listing Interfaces :" + e);
-                    return null;
-                }
-
-                for (String iface : ifaces) {
-                    for (String regex : mUpstreamIfaceRegexs) {
-                        if (iface.matches(regex)) {
-                            // verify it is active
-                            InterfaceConfiguration ifcg = null;
-                            try {
-                                ifcg = service.getInterfaceConfig(iface);
-                                if (ifcg.isActive()) {
-                                    return iface;
-                                }
-                            } catch (Exception e) {
-                                Log.e(TAG, "Error getting iface config :" + e);
-                                // ignore - try next
-                                continue;
-                            }
-                        }
-                    }
-                }
-                return null;
-            }
 
             protected void chooseUpstreamType(boolean tryCell) {
-                // decide if the current upstream is good or not and if not
-                // do something about it (start up DUN if required or HiPri if not)
-                String iface = findActiveUpstreamIface();
                 IBinder b = ServiceManager.getService(Context.CONNECTIVITY_SERVICE);
                 IConnectivityManager cm = IConnectivityManager.Stub.asInterface(b);
-                mMobileReserved = false;
-                if (DEBUG) {
-                    Log.d(TAG, "chooseUpstreamType(" + tryCell + "),  dunRequired ="
-                            + mDunRequired + ", iface=" + iface);
-                }
-                if (iface != null) {
+                int upType = ConnectivityManager.TYPE_NONE;
+                String iface = null;
+
+                for (Integer netType : mUpstreamIfaceTypes) {
+                    NetworkInfo info = null;
                     try {
-                        if (mDunRequired) {
-                            // check if Dun is on - we can use that
-                            NetworkInfo info = cm.getNetworkInfo(
-                                    ConnectivityManager.TYPE_MOBILE_DUN);
-                            if (info.isConnected()) {
-                                if (DEBUG) Log.d(TAG, "setting dun ifacename =" + iface);
-                                // even if we're already connected - it may be somebody else's
-                                // refcount, so add our own
-                                turnOnMobileConnection();
-                            } else {
-                                // verify the iface is not the default mobile - can't use that!
-                                info = cm.getNetworkInfo(ConnectivityManager.TYPE_MOBILE);
-                                if (info.isConnected()) {
-                                    iface = null; // can't accept this one
-                                }
-                            }
-                        } else {
-                            if (DEBUG) Log.d(TAG, "checking if hipri brought us this connection");
-                            NetworkInfo info = cm.getNetworkInfo(
-                                    ConnectivityManager.TYPE_MOBILE_HIPRI);
-                            if (info.isConnected()) {
-                                if (DEBUG) Log.d(TAG, "yes - hipri in use");
-                                // even if we're already connected - it may be sombody else's
-                                // refcount, so add our own
-                                turnOnMobileConnection();
-                            }
-                        }
-                    } catch (RemoteException e) {
-                        Log.e(TAG, "RemoteException calling ConnectivityManager " + e);
-                        iface = null;
+                        info = cm.getNetworkInfo(netType.intValue());
+                    } catch (RemoteException e) { }
+                    if ((info != null) && info.isConnected()) {
+                        upType = netType.intValue();
+                        break;
                     }
                 }
-                // may have been set to null in the if above
-                if (iface == null ) {
-                    boolean success = false;
-                    if (tryCell == TRY_TO_SETUP_MOBILE_CONNECTION) {
-                        success = turnOnMobileConnection();
+
+                if (DEBUG) {
+                    Log.d(TAG, "chooseUpstreamType(" + tryCell + "), preferredApn ="
+                            + mPreferredUpstreamMobileApn + ", got type=" + upType);
+                }
+
+                // if we're on DUN, put our own grab on it
+                if (upType == ConnectivityManager.TYPE_MOBILE_DUN ||
+                        upType == ConnectivityManager.TYPE_MOBILE_HIPRI) {
+                    turnOnUpstreamMobileConnection(upType);
+                }
+
+                if (upType == ConnectivityManager.TYPE_NONE) {
+                    boolean tryAgainLater = true;
+                    if ((tryCell == TRY_TO_SETUP_MOBILE_CONNECTION) &&
+                            (turnOnUpstreamMobileConnection(mPreferredUpstreamMobileApn) == true)) {
+                        // we think mobile should be coming up - don't set a retry
+                        tryAgainLater = false;
                     }
-                    if (!success) {
-                        // wait for things to settle and retry
+                    if (tryAgainLater) {
                         sendMessageDelayed(CMD_RETRY_UPSTREAM, UPSTREAM_SETTLE_TIME_MS);
                     }
+                } else {
+                    LinkProperties linkProperties = null;
+                    try {
+                        linkProperties = cm.getLinkProperties(upType);
+                    } catch (RemoteException e) { }
+                    if (linkProperties != null) iface = linkProperties.getInterfaceName();
                 }
                 notifyTetheredOfNewUpstreamIface(iface);
             }
+
             protected void notifyTetheredOfNewUpstreamIface(String ifaceName) {
                 if (DEBUG) Log.d(TAG, "notifying tethered with iface =" + ifaceName);
                 mUpstreamIfaceName = ifaceName;
@@ -1344,7 +1348,6 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
         class InitialState extends TetherMasterUtilState {
             @Override
             public void enter() {
-                mMobileReserved = false;
             }
             @Override
             public boolean processMessage(Message message) {
@@ -1352,7 +1355,7 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
                 boolean retValue = true;
                 switch (message.what) {
                     case CMD_TETHER_MODE_REQUESTED:
-                        mDunRequired = isDunRequired();
+                        checkDunRequired();
                         TetherInterfaceSM who = (TetherInterfaceSM)message.obj;
                         if (DEBUG) Log.d(TAG, "Tether Mode requested by " + who.toString());
                         mNotifyList.add(who);
@@ -1386,7 +1389,7 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
             }
             @Override
             public void exit() {
-                turnOffMobileConnection();
+                turnOffUpstreamMobileConnection();
                 notifyTetheredOfNewUpstreamIface(null);
             }
             @Override
@@ -1424,23 +1427,22 @@ public class Tethering extends INetworkManagementEventObserver.Stub {
                                 Log.d(TAG, "renewing mobile connection - requeuing for another " +
                                         CELL_CONNECTION_RENEW_MS + "ms");
                             }
-                            mMobileReserved = false; // need to renew it
-                            turnOnMobileConnection();
+                            turnOnUpstreamMobileConnection(mMobileApnReserved);
                         }
                         break;
-                   case CMD_RETRY_UPSTREAM:
-                       chooseUpstreamType(mTryCell);
-                       mTryCell = !mTryCell;
-                       break;
-                   default:
-                       retValue = false;
-                       break;
+                    case CMD_RETRY_UPSTREAM:
+                        chooseUpstreamType(mTryCell);
+                        mTryCell = !mTryCell;
+                        break;
+                    default:
+                        retValue = false;
+                        break;
                 }
                 return retValue;
             }
         }
 
-        class ErrorState extends HierarchicalState {
+        class ErrorState extends State {
             int mErrorNotification;
             @Override
             public boolean processMessage(Message message) {

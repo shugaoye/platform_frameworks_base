@@ -3023,6 +3023,18 @@ public final class Settings {
         public static final String TTY_MODE_ENABLED = "tty_mode_enabled";
 
         /**
+         * The number of milliseconds to delay before sending out Connectivyt Change broadcasts
+         * @hide
+         */
+        public static final String CONNECTIVITY_CHANGE_DELAY = "connectivity_change_delay";
+
+        /**
+         * Default value for CONNECTIVITY_CHANGE_DELAY in milliseconds.
+         * @hide
+         */
+        public static final int CONNECTIVITY_CHANGE_DELAY_DEFAULT = 3000;
+
+        /**
          * Controls whether settings backup is enabled.
          * Type: int ( 0 = disabled, 1 = enabled )
          * @hide
@@ -3704,6 +3716,29 @@ public final class Settings {
          */
         public static final String INET_CONDITION_DEBOUNCE_DOWN_DELAY =
                 "inet_condition_debounce_down_delay";
+
+        /**
+         * URL to open browser on to allow user to manage a prepay account
+         * @hide
+         */
+        public static final String SETUP_PREPAID_DATA_SERVICE_URL =
+                "setup_prepaid_data_service_url";
+
+        /**
+         * URL to attempt a GET on to see if this is a prepay device
+         * @hide
+         */
+        public static final String SETUP_PREPAID_DETECTION_TARGET_URL =
+                "setup_prepaid_detection_target_url";
+
+        /**
+         * Host to check for a redirect to after an attempt to GET
+         * SETUP_PREPAID_DETECTION_TARGET_URL. (If we redirected there,
+         * this is a prepaid device with zero balance.)
+         * @hide
+         */
+        public static final String SETUP_PREPAID_DETECTION_REDIR_HOST =
+                "setup_prepaid_detection_redir_host";
 
         /**
          * @hide

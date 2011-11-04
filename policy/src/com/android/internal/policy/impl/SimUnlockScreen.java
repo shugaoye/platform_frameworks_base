@@ -92,15 +92,16 @@ public class SimUnlockScreen extends LinearLayout implements KeyguardScreen, Vie
         mBackSpaceButton = findViewById(R.id.backspace);
         mBackSpaceButton.setOnClickListener(this);
 
-        mEmergencyCallButton = (Button) findViewById(R.id.emergencyCall);
-        mLockPatternUtils.updateEmergencyCallButtonState(mEmergencyCallButton);
         mOkButton = (TextView) findViewById(R.id.ok);
 
         mHeaderText.setText(R.string.keyguard_password_enter_pin_code);
         mPinText.setFocusable(false);
 
-        mEmergencyCallButton.setOnClickListener(this);
         mOkButton.setOnClickListener(this);
+
+        mEmergencyCallButton = (Button) findViewById(R.id.emergencyCall);
+        mEmergencyCallButton.setOnClickListener(this);
+        mLockPatternUtils.updateEmergencyCallButtonState(mEmergencyCallButton);
 
         setFocusableInTouchMode(true);
     }
@@ -229,7 +230,7 @@ public class SimUnlockScreen extends LinearLayout implements KeyguardScreen, Vie
                 if (success) {
                     // before closing the keyguard, report back that
                     // the sim is unlocked so it knows right away
-                    mUpdateMonitor.reportSimPinUnlocked();
+                    mUpdateMonitor.reportSimUnlocked();
                     mCallback.goToUnlockScreen();
                 } else {
                     mHeaderText.setText(R.string.keyguard_password_wrong_pin_code);
@@ -291,9 +292,8 @@ public class SimUnlockScreen extends LinearLayout implements KeyguardScreen, Vie
                 mCallback.goToUnlockScreen();
             }
         }
-        
     }
-    
+
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
@@ -403,7 +403,7 @@ public class SimUnlockScreen extends LinearLayout implements KeyguardScreen, Vie
     }
 
     public void onPhoneStateChanged(String newState) {
-        mLockPatternUtils.updateEmergencyCallButtonState(mEmergencyCallButton);
+            mLockPatternUtils.updateEmergencyCallButtonState(mEmergencyCallButton);
     }
 
     public void onRefreshBatteryInfo(boolean showBatteryInfo, boolean pluggedIn, int batteryLevel) {

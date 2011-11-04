@@ -26,19 +26,24 @@ import android.net.ConnectivityManager;
 import android.net.DummyDataStateTracker;
 import android.net.EthernetDataTracker;
 import android.net.IConnectivityManager;
+import android.net.LinkAddress;
 import android.net.LinkProperties;
+import android.net.LinkProperties.CompareResult;
 import android.net.MobileDataStateTracker;
+import android.net.NetworkConfig;
 import android.net.NetworkInfo;
 import android.net.NetworkStateTracker;
 import android.net.NetworkUtils;
 import android.net.Proxy;
 import android.net.ProxyProperties;
+import android.net.RouteInfo;
 import android.net.vpn.VpnManager;
 import android.net.wifi.WifiStateTracker;
 import android.os.Binder;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
+import android.os.INetworkManagementService;
 import android.os.Looper;
 import android.os.Message;
 import android.os.PowerManager;
@@ -57,7 +62,9 @@ import java.io.FileDescriptor;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.net.Inet6Address;
 import java.net.InetAddress;
+import java.net.Inet4Address;
 import java.net.UnknownHostException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -71,6 +78,7 @@ import java.util.List;
 public class ConnectivityService extends IConnectivityManager.Stub {
 
     private static final boolean DBG = true;
+    private static final boolean VDBG = true;
     private static final String TAG = "ConnectivityService";
 
     // how long to wait before switching back to a radio's default network
@@ -78,6 +86,10 @@ public class ConnectivityService extends IConnectivityManager.Stub {
     // system property that can override the above value
     private static final String NETWORK_RESTORE_DELAY_PROP_NAME =
             "android.telephony.apn-restore";
+
+    // used in recursive route setting to add gateways for the host for which
+    // a host route was requested.
+    private static final int MAX_HOSTROUTE_CYCLE_COUNT = 10;
 
     private Tethering mTethering;
     private boolean mTetheringConfigValid = false;
@@ -88,6 +100,11 @@ public class ConnectivityService extends IConnectivityManager.Stub {
      * abstractly.
      */
     private NetworkStateTracker mNetTrackers[];
+
+    /**
+     * The link properties that define the current links
+     */
+    private LinkProperties mCurrentLinkProperties[];
 
     /**
      * A per Net list of the PID's that requested access to the net
@@ -117,6 +134,8 @@ public class ConnectivityService extends IConnectivityManager.Stub {
     private static ConnectivityService sServiceInstance;
 
     private AtomicBoolean mBackgroundDataEnabled = new AtomicBoolean(true);
+
+    private INetworkManagementService mNetd;
 
     private static final int ENABLED  = 1;
     private static final int DISABLED = 0;
@@ -189,11 +208,25 @@ public class ConnectivityService extends IConnectivityManager.Stub {
     private static final int EVENT_APPLY_GLOBAL_HTTP_PROXY =
             MAX_NETWORK_STATE_TRACKER_EVENT + 9;
 
+    /**
+     * used internally to set external dependency met/unmet
+     * arg1 = ENABLED (met) or DISABLED (unmet)
+     * arg2 = NetworkType
+     */
+    private static final int EVENT_SET_DEPENDENCY_MET =
+            MAX_NETWORK_STATE_TRACKER_EVENT + 10;
+
+    /**
+     * used internally to send a sticky broadcast delayed.
+     */
+    private static final int EVENT_SEND_STICKY_BROADCAST_INTENT =
+            MAX_NETWORK_STATE_TRACKER_EVENT + 11;
+
     private Handler mHandler;
 
     // list of DeathRecipients used to make sure features are turned off when
     // a process dies
-    private List mFeatureUsers;
+    private List<FeatureUser> mFeatureUsers;
 
     private boolean mSystemReady;
     private Intent mInitialBroadcast;
@@ -204,6 +237,10 @@ public class ConnectivityService extends IConnectivityManager.Stub {
     private int mNetTransitionWakeLockTimeout;
 
     private InetAddress mDefaultDns;
+
+    // this collection is used to refcount the added routes - if there are none left
+    // it's time to remove the route from the route table
+    private Collection<RouteInfo> mAddedRoutes = new ArrayList<RouteInfo>();
 
     // used in DBG mode to track inet condition reports
     private static final int INET_CONDITION_LOG_MAX_SIZE = 15;
@@ -217,28 +254,7 @@ public class ConnectivityService extends IConnectivityManager.Stub {
 
     private SettingsObserver mSettingsObserver;
 
-    private static class NetworkAttributes {
-        /**
-         * Class for holding settings read from resources.
-         */
-        public String mName;
-        public int mType;
-        public int mRadio;
-        public int mPriority;
-        public NetworkInfo.State mLastState;
-        public NetworkAttributes(String init) {
-            String fragments[] = init.split(",");
-            mName = fragments[0].toLowerCase();
-            mType = Integer.parseInt(fragments[1]);
-            mRadio = Integer.parseInt(fragments[2]);
-            mPriority = Integer.parseInt(fragments[3]);
-            mLastState = NetworkInfo.State.UNKNOWN;
-        }
-        public boolean isDefault() {
-            return (mType == mRadio);
-        }
-    }
-    NetworkAttributes[] mNetAttributes;
+    NetworkConfig[] mNetConfigs;
     int mNetworksDefined;
 
     private static class RadioAttributes {
@@ -251,6 +267,9 @@ public class ConnectivityService extends IConnectivityManager.Stub {
         }
     }
     RadioAttributes[] mRadioAttributes;
+
+    // the set of network types that can only be enabled by system/sig apps
+    List mProtectedNetworks;
 
     public static synchronized ConnectivityService getInstance(Context context) {
         if (sServiceInstance == null) {
@@ -301,11 +320,12 @@ public class ConnectivityService extends IConnectivityManager.Stub {
 
         mNetTrackers = new NetworkStateTracker[
                 ConnectivityManager.MAX_NETWORK_TYPE+1];
+        mCurrentLinkProperties = new LinkProperties[ConnectivityManager.MAX_NETWORK_TYPE+1];
 
         mNetworkPreference = getPersistedNetworkPreference();
 
         mRadioAttributes = new RadioAttributes[ConnectivityManager.MAX_RADIO_TYPE+1];
-        mNetAttributes = new NetworkAttributes[ConnectivityManager.MAX_NETWORK_TYPE+1];
+        mNetConfigs = new NetworkConfig[ConnectivityManager.MAX_NETWORK_TYPE+1];
 
         // Load device network attributes from resources
         String[] raStrings = context.getResources().getStringArray(
@@ -328,26 +348,37 @@ public class ConnectivityService extends IConnectivityManager.Stub {
                 com.android.internal.R.array.networkAttributes);
         for (String naString : naStrings) {
             try {
-                NetworkAttributes n = new NetworkAttributes(naString);
-                if (n.mType > ConnectivityManager.MAX_NETWORK_TYPE) {
+                NetworkConfig n = new NetworkConfig(naString);
+                if (n.type > ConnectivityManager.MAX_NETWORK_TYPE) {
                     loge("Error in networkAttributes - ignoring attempt to define type " +
-                            n.mType);
+                            n.type);
                     continue;
                 }
-                if (mNetAttributes[n.mType] != null) {
+                if (mNetConfigs[n.type] != null) {
                     loge("Error in networkAttributes - ignoring attempt to redefine type " +
-                            n.mType);
+                            n.type);
                     continue;
                 }
-                if (mRadioAttributes[n.mRadio] == null) {
+                if (mRadioAttributes[n.radio] == null) {
                     loge("Error in networkAttributes - ignoring attempt to use undefined " +
-                            "radio " + n.mRadio + " in network type " + n.mType);
+                            "radio " + n.radio + " in network type " + n.type);
                     continue;
                 }
-                mNetAttributes[n.mType] = n;
+                mNetConfigs[n.type] = n;
                 mNetworksDefined++;
             } catch(Exception e) {
                 // ignore it - leave the entry null
+            }
+        }
+
+        mProtectedNetworks = new ArrayList<Integer>();
+        int[] protectedNetworks = context.getResources().getIntArray(
+                com.android.internal.R.array.config_protectedNetworks);
+        for (int p : protectedNetworks) {
+            if ((mNetConfigs[p] != null) && (mProtectedNetworks.contains(p) == false)) {
+                mProtectedNetworks.add(p);
+            } else {
+                if (DBG) loge("Ignoring protectedNetwork " + p);
             }
         }
 
@@ -358,16 +389,16 @@ public class ConnectivityService extends IConnectivityManager.Stub {
             int currentLowest = 0;
             int nextLowest = 0;
             while (insertionPoint > -1) {
-                for (NetworkAttributes na : mNetAttributes) {
+                for (NetworkConfig na : mNetConfigs) {
                     if (na == null) continue;
-                    if (na.mPriority < currentLowest) continue;
-                    if (na.mPriority > currentLowest) {
-                        if (na.mPriority < nextLowest || nextLowest == 0) {
-                            nextLowest = na.mPriority;
+                    if (na.priority < currentLowest) continue;
+                    if (na.priority > currentLowest) {
+                        if (na.priority < nextLowest || nextLowest == 0) {
+                            nextLowest = na.priority;
                         }
                         continue;
                     }
-                    mPriorityList[insertionPoint--] = na.mType;
+                    mPriorityList[insertionPoint--] = na.type;
                 }
                 currentLowest = nextLowest;
                 nextLowest = 0;
@@ -379,7 +410,7 @@ public class ConnectivityService extends IConnectivityManager.Stub {
             mNetRequestersPids[i] = new ArrayList();
         }
 
-        mFeatureUsers = new ArrayList();
+        mFeatureUsers = new ArrayList<FeatureUser>();
 
         mNumDnsEntries = 0;
 
@@ -393,7 +424,7 @@ public class ConnectivityService extends IConnectivityManager.Stub {
          * to change very often.
          */
         for (int netType : mPriorityList) {
-            switch (mNetAttributes[netType].mRadio) {
+            switch (mNetConfigs[netType].radio) {
             case ConnectivityManager.TYPE_WIFI:
                 if (DBG) log("Starting Wifi Service.");
                 WifiStateTracker wst = new WifiStateTracker();
@@ -409,12 +440,12 @@ public class ConnectivityService extends IConnectivityManager.Stub {
                 break;
             case ConnectivityManager.TYPE_MOBILE:
                 mNetTrackers[netType] = new MobileDataStateTracker(netType,
-                        mNetAttributes[netType].mName);
+                        mNetConfigs[netType].name);
                 mNetTrackers[netType].startMonitoring(context, mHandler);
                 break;
             case ConnectivityManager.TYPE_DUMMY:
                 mNetTrackers[netType] = new DummyDataStateTracker(netType,
-                        mNetAttributes[netType].mName);
+                        mNetConfigs[netType].name);
                 mNetTrackers[netType].startMonitoring(context, mHandler);
                 break;
             case ConnectivityManager.TYPE_BLUETOOTH:
@@ -427,18 +458,17 @@ public class ConnectivityService extends IConnectivityManager.Stub {
                 break;
             default:
                 loge("Trying to create a DataStateTracker for an unknown radio type " +
-                        mNetAttributes[netType].mRadio);
+                        mNetConfigs[netType].radio);
                 continue;
             }
+            mCurrentLinkProperties[netType] = null;
         }
 
         mTethering = new Tethering(mContext, mHandler.getLooper());
-        mTetheringConfigValid = (((mNetTrackers[ConnectivityManager.TYPE_MOBILE_DUN] != null) ||
-                                  !mTethering.isDunRequired()) &&
-                                 (mTethering.getTetherableUsbRegexs().length != 0 ||
+        mTetheringConfigValid = ((mTethering.getTetherableUsbRegexs().length != 0 ||
                                   mTethering.getTetherableWifiRegexs().length != 0 ||
                                   mTethering.getTetherableBluetoothRegexs().length != 0) &&
-                                 mTethering.getUpstreamIfaceRegexs().length != 0);
+                                 mTethering.getUpstreamIfaceTypes().length != 0);
 
         if (DBG) {
             mInetLog = new ArrayList();
@@ -474,8 +504,8 @@ public class ConnectivityService extends IConnectivityManager.Stub {
 
     private void handleSetNetworkPreference(int preference) {
         if (ConnectivityManager.isNetworkTypeValid(preference) &&
-                mNetAttributes[preference] != null &&
-                mNetAttributes[preference].isDefault()) {
+                mNetConfigs[preference] != null &&
+                mNetConfigs[preference].isDefault()) {
             if (mNetworkPreference != preference) {
                 final ContentResolver cr = mContext.getContentResolver();
                 Settings.Secure.putInt(cr, Settings.Secure.NETWORK_PREFERENCE, preference);
@@ -485,6 +515,17 @@ public class ConnectivityService extends IConnectivityManager.Stub {
                 enforcePreference();
             }
         }
+    }
+
+    private int getConnectivityChangeDelay() {
+        final ContentResolver cr = mContext.getContentResolver();
+
+        /** Check system properties for the default value then use secure settings value, if any. */
+        int defaultDelay = SystemProperties.getInt(
+                "conn." + Settings.Secure.CONNECTIVITY_CHANGE_DELAY,
+                Settings.Secure.CONNECTIVITY_CHANGE_DELAY_DEFAULT);
+        return Settings.Secure.getInt(cr, Settings.Secure.CONNECTIVITY_CHANGE_DELAY,
+                defaultDelay);
     }
 
     private int getPersistedNetworkPreference() {
@@ -542,21 +583,7 @@ public class ConnectivityService extends IConnectivityManager.Stub {
      * active
      */
     public NetworkInfo getActiveNetworkInfo() {
-        enforceAccessPermission();
-        for (int type=0; type <= ConnectivityManager.MAX_NETWORK_TYPE; type++) {
-            if (mNetAttributes[type] == null || !mNetAttributes[type].isDefault()) {
-                continue;
-            }
-            NetworkStateTracker t = mNetTrackers[type];
-            NetworkInfo info = t.getNetworkInfo();
-            if (info.isConnected()) {
-                if (DBG && type != mActiveDefaultNetwork) {
-                    loge("connected default network is not mActiveDefaultNetwork!");
-                }
-                return info;
-            }
-        }
-        return null;
+        return getNetworkInfo(mActiveDefaultNetwork);
     }
 
     public NetworkInfo getNetworkInfo(int networkType) {
@@ -588,18 +615,7 @@ public class ConnectivityService extends IConnectivityManager.Stub {
      * none is active
      */
     public LinkProperties getActiveLinkProperties() {
-        enforceAccessPermission();
-        for (int type=0; type <= ConnectivityManager.MAX_NETWORK_TYPE; type++) {
-            if (mNetAttributes[type] == null || !mNetAttributes[type].isDefault()) {
-                continue;
-            }
-            NetworkStateTracker t = mNetTrackers[type];
-            NetworkInfo info = t.getNetworkInfo();
-            if (info.isConnected()) {
-                return t.getLinkProperties();
-            }
-        }
-        return null;
+        return getLinkProperties(mActiveDefaultNetwork);
     }
 
     public LinkProperties getLinkProperties(int networkType) {
@@ -678,6 +694,20 @@ public class ConnectivityService extends IConnectivityManager.Stub {
             stopUsingNetworkFeature(this, false);
         }
 
+        public boolean isSameUser(FeatureUser u) {
+            if (u == null) return false;
+
+            return isSameUser(u.mPid, u.mUid, u.mNetworkType, u.mFeature);
+        }
+
+        public boolean isSameUser(int pid, int uid, int networkType, String feature) {
+            if ((mPid == pid) && (mUid == uid) && (mNetworkType == networkType) &&
+                TextUtils.equals(mFeature, feature)) {
+                return true;
+            }
+            return false;
+        }
+
         public String toString() {
             return "FeatureUser("+mNetworkType+","+mFeature+","+mPid+","+mUid+"), created " +
                     (System.currentTimeMillis() - mCreateTime) + " mSec ago";
@@ -692,7 +722,7 @@ public class ConnectivityService extends IConnectivityManager.Stub {
         }
         enforceChangePermission();
         if (!ConnectivityManager.isNetworkTypeValid(networkType) ||
-                mNetAttributes[networkType] == null) {
+                mNetConfigs[networkType] == null) {
             return Phone.APN_REQUEST_FAILED;
         }
 
@@ -701,17 +731,17 @@ public class ConnectivityService extends IConnectivityManager.Stub {
         // TODO - move this into the MobileDataStateTracker
         int usedNetworkType = networkType;
         if(networkType == ConnectivityManager.TYPE_MOBILE) {
-            if (TextUtils.equals(feature, Phone.FEATURE_ENABLE_MMS)) {
-                usedNetworkType = ConnectivityManager.TYPE_MOBILE_MMS;
-            } else if (TextUtils.equals(feature, Phone.FEATURE_ENABLE_SUPL)) {
-                usedNetworkType = ConnectivityManager.TYPE_MOBILE_SUPL;
-            } else if (TextUtils.equals(feature, Phone.FEATURE_ENABLE_DUN) ||
-                    TextUtils.equals(feature, Phone.FEATURE_ENABLE_DUN_ALWAYS)) {
-                usedNetworkType = ConnectivityManager.TYPE_MOBILE_DUN;
-            } else if (TextUtils.equals(feature, Phone.FEATURE_ENABLE_HIPRI)) {
-                usedNetworkType = ConnectivityManager.TYPE_MOBILE_HIPRI;
+            usedNetworkType = convertFeatureToNetworkType(feature);
+            if (usedNetworkType < 0) {
+                Slog.e(TAG, "Can't match any netTracker!");
+                usedNetworkType = networkType;
             }
         }
+
+        if (mProtectedNetworks.contains(usedNetworkType)) {
+            enforceConnectivityInternalPermission();
+        }
+
         NetworkStateTracker network = mNetTrackers[usedNetworkType];
         if (network != null) {
             Integer currentPid = new Integer(getCallingPid());
@@ -728,16 +758,33 @@ public class ConnectivityService extends IConnectivityManager.Stub {
                     }
                 }
 
+                int restoreTimer = getRestoreDefaultNetworkDelay(usedNetworkType);
+
                 synchronized(this) {
-                    mFeatureUsers.add(f);
+                    boolean addToList = true;
+                    if (restoreTimer < 0) {
+                        // In case there is no timer is specified for the feature,
+                        // make sure we don't add duplicate entry with the same request.
+                        for (FeatureUser u : mFeatureUsers) {
+                            if (u.isSameUser(f)) {
+                                // Duplicate user is found. Do not add.
+                                addToList = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (addToList) mFeatureUsers.add(f);
                     if (!mNetRequestersPids[usedNetworkType].contains(currentPid)) {
                         // this gets used for per-pid dns when connected
                         mNetRequestersPids[usedNetworkType].add(currentPid);
                     }
                 }
-                mHandler.sendMessageDelayed(mHandler.obtainMessage(EVENT_RESTORE_DEFAULT_NETWORK,
-                        f), getRestoreDefaultNetworkDelay());
 
+                if (restoreTimer >= 0) {
+                    mHandler.sendMessageDelayed(
+                            mHandler.obtainMessage(EVENT_RESTORE_DEFAULT_NETWORK, f), restoreTimer);
+                }
 
                 if ((ni.isConnectedOrConnecting() == true) &&
                         !network.isTeardownRequested()) {
@@ -783,11 +830,9 @@ public class ConnectivityService extends IConnectivityManager.Stub {
         boolean found = false;
 
         synchronized(this) {
-            for (int i = 0; i < mFeatureUsers.size() ; i++) {
-                u = (FeatureUser)mFeatureUsers.get(i);
-                if (uid == u.mUid && pid == u.mPid &&
-                        networkType == u.mNetworkType &&
-                        TextUtils.equals(feature, u.mFeature)) {
+            for (FeatureUser x : mFeatureUsers) {
+                if (x.isSameUser(pid, uid, networkType, feature)) {
+                    u = x;
                     found = true;
                     break;
                 }
@@ -839,11 +884,8 @@ public class ConnectivityService extends IConnectivityManager.Stub {
             // do not pay attention to duplicate requests - in effect the
             // API does not refcount and a single stop will counter multiple starts.
             if (ignoreDups == false) {
-                for (int i = 0; i < mFeatureUsers.size() ; i++) {
-                    FeatureUser x = (FeatureUser)mFeatureUsers.get(i);
-                    if (x.mUid == u.mUid && x.mPid == u.mPid &&
-                            x.mNetworkType == u.mNetworkType &&
-                            TextUtils.equals(x.mFeature, u.mFeature)) {
+                for (FeatureUser x : mFeatureUsers) {
+                    if (x.isSameUser(u)) {
                         if (DBG) log("ignoring stopUsingNetworkFeature as dup is found");
                         return 1;
                     }
@@ -853,15 +895,9 @@ public class ConnectivityService extends IConnectivityManager.Stub {
             // TODO - move to MobileDataStateTracker
             int usedNetworkType = networkType;
             if (networkType == ConnectivityManager.TYPE_MOBILE) {
-                if (TextUtils.equals(feature, Phone.FEATURE_ENABLE_MMS)) {
-                    usedNetworkType = ConnectivityManager.TYPE_MOBILE_MMS;
-                } else if (TextUtils.equals(feature, Phone.FEATURE_ENABLE_SUPL)) {
-                    usedNetworkType = ConnectivityManager.TYPE_MOBILE_SUPL;
-                } else if (TextUtils.equals(feature, Phone.FEATURE_ENABLE_DUN) ||
-                        TextUtils.equals(feature, Phone.FEATURE_ENABLE_DUN_ALWAYS)) {
-                    usedNetworkType = ConnectivityManager.TYPE_MOBILE_DUN;
-                } else if (TextUtils.equals(feature, Phone.FEATURE_ENABLE_HIPRI)) {
-                    usedNetworkType = ConnectivityManager.TYPE_MOBILE_HIPRI;
+                usedNetworkType = convertFeatureToNetworkType(feature);
+                if (usedNetworkType < 0) {
+                    usedNetworkType = networkType;
                 }
             }
             tracker =  mNetTrackers[usedNetworkType];
@@ -924,6 +960,10 @@ public class ConnectivityService extends IConnectivityManager.Stub {
      */
     public boolean requestRouteToHostAddress(int networkType, byte[] hostAddress) {
         enforceChangePermission();
+        if (mProtectedNetworks.contains(networkType)) {
+            enforceConnectivityInternalPermission();
+        }
+
         if (!ConnectivityManager.isNetworkTypeValid(networkType)) {
             return false;
         }
@@ -939,37 +979,96 @@ public class ConnectivityService extends IConnectivityManager.Stub {
         }
         try {
             InetAddress addr = InetAddress.getByAddress(hostAddress);
-            return addHostRoute(tracker, addr);
+            LinkProperties lp = tracker.getLinkProperties();
+            return addRouteToAddress(lp, addr);
         } catch (UnknownHostException e) {}
         return false;
     }
 
-    /**
-     * Ensure that a network route exists to deliver traffic to the specified
-     * host via the mobile data network.
-     * @param hostAddress the IP address of the host to which the route is desired,
-     * in network byte order.
-     * TODO - deprecate
-     * @return {@code true} on success, {@code false} on failure
-     */
-    private boolean addHostRoute(NetworkStateTracker nt, InetAddress hostAddress) {
-        if (nt.getNetworkInfo().getType() == ConnectivityManager.TYPE_WIFI) {
-            return false;
-        }
+    private boolean addRoute(LinkProperties p, RouteInfo r) {
+        return modifyRoute(p.getInterfaceName(), p, r, 0, true);
+    }
 
-        LinkProperties p = nt.getLinkProperties();
-        if (p == null) return false;
-        String interfaceName = p.getInterfaceName();
+    private boolean removeRoute(LinkProperties p, RouteInfo r) {
+        return modifyRoute(p.getInterfaceName(), p, r, 0, false);
+    }
 
-        if (DBG) {
-            log("Requested host route to " + hostAddress + "(" + interfaceName + ")");
-        }
-        if (interfaceName != null) {
-            return NetworkUtils.addHostRoute(interfaceName, hostAddress, null);
+    private boolean addRouteToAddress(LinkProperties lp, InetAddress addr) {
+        return modifyRouteToAddress(lp, addr, true);
+    }
+
+    private boolean removeRouteToAddress(LinkProperties lp, InetAddress addr) {
+        return modifyRouteToAddress(lp, addr, false);
+    }
+
+    private boolean modifyRouteToAddress(LinkProperties lp, InetAddress addr, boolean doAdd) {
+        RouteInfo bestRoute = RouteInfo.selectBestRoute(lp.getRoutes(), addr);
+        if (bestRoute == null) {
+            bestRoute = RouteInfo.makeHostRoute(addr);
         } else {
-            if (DBG) loge("addHostRoute failed due to null interface name");
+            if (bestRoute.getGateway().equals(addr)) {
+                // if there is no better route, add the implied hostroute for our gateway
+                bestRoute = RouteInfo.makeHostRoute(addr);
+            } else {
+                // if we will connect to this through another route, add a direct route
+                // to it's gateway
+                bestRoute = RouteInfo.makeHostRoute(addr, bestRoute.getGateway());
+            }
+        }
+        return modifyRoute(lp.getInterfaceName(), lp, bestRoute, 0, doAdd);
+    }
+
+    private boolean modifyRoute(String ifaceName, LinkProperties lp, RouteInfo r, int cycleCount,
+            boolean doAdd) {
+        if ((ifaceName == null) || (lp == null) || (r == null)) return false;
+
+        if (cycleCount > MAX_HOSTROUTE_CYCLE_COUNT) {
+            loge("Error adding route - too much recursion");
             return false;
         }
+
+        if (r.isHostRoute() == false) {
+            RouteInfo bestRoute = RouteInfo.selectBestRoute(lp.getRoutes(), r.getGateway());
+            if (bestRoute != null) {
+                if (bestRoute.getGateway().equals(r.getGateway())) {
+                    // if there is no better route, add the implied hostroute for our gateway
+                    bestRoute = RouteInfo.makeHostRoute(r.getGateway());
+                } else {
+                    // if we will connect to our gateway through another route, add a direct
+                    // route to it's gateway
+                    bestRoute = RouteInfo.makeHostRoute(r.getGateway(), bestRoute.getGateway());
+                }
+                modifyRoute(ifaceName, lp, bestRoute, cycleCount+1, doAdd);
+            }
+        }
+        if (doAdd) {
+            if (DBG) log("Adding " + r + " for interface " + ifaceName);
+            mAddedRoutes.add(r);
+            try {
+                mNetd.addRoute(ifaceName, r);
+            } catch (Exception e) {
+                // never crash - catch them all
+                loge("Exception trying to add a route: " + e);
+                return false;
+            }
+        } else {
+            // if we remove this one and there are no more like it, then refcount==0 and
+            // we can remove it from the table
+            mAddedRoutes.remove(r);
+            if (mAddedRoutes.contains(r) == false) {
+                if (DBG) log("Removing " + r + " for interface " + ifaceName);
+                try {
+                    mNetd.removeRoute(ifaceName, r);
+                } catch (Exception e) {
+                    // never crash - catch them all
+                    loge("Exception trying to remove a route: " + e);
+                    return false;
+                }
+            } else {
+                if (DBG) log("not removing " + r + " as it's still in use");
+            }
+        }
+        return true;
     }
 
     /**
@@ -1015,6 +1114,22 @@ public class ConnectivityService extends IConnectivityManager.Stub {
         return retVal;
     }
 
+    public void setDataDependency(int networkType, boolean met) {
+        enforceConnectivityInternalPermission();
+
+        mHandler.sendMessage(mHandler.obtainMessage(EVENT_SET_DEPENDENCY_MET,
+                (met ? ENABLED : DISABLED), networkType));
+    }
+
+    private void handleSetDependencyMet(int networkType, boolean met) {
+        if (mNetTrackers[networkType] != null) {
+            if (DBG) {
+                log("handleSetDependencyMet(" + networkType + ", " + met + ")");
+            }
+            mNetTrackers[networkType].setDependencyMet(met);
+        }
+    }
+
     /**
      * @see ConnectivityManager#setMobileDataEnabled(boolean)
      */
@@ -1023,7 +1138,7 @@ public class ConnectivityService extends IConnectivityManager.Stub {
         if (DBG) log("setMobileDataEnabled(" + enabled + ")");
 
         mHandler.sendMessage(mHandler.obtainMessage(EVENT_SET_MOBILE_DATA,
-            (enabled ? ENABLED : DISABLED), 0));
+                (enabled ? ENABLED : DISABLED), 0));
     }
 
     private void handleSetMobileData(boolean enabled) {
@@ -1084,7 +1199,7 @@ public class ConnectivityService extends IConnectivityManager.Stub {
          * getting the disconnect for a network that we explicitly disabled
          * in accordance with network preference policies.
          */
-        if (!mNetAttributes[prevNetType].isDefault()) {
+        if (!mNetConfigs[prevNetType].isDefault()) {
             List pids = mNetRequestersPids[prevNetType];
             for (int i = 0; i<pids.size(); i++) {
                 Integer pid = (Integer)pids.get(i);
@@ -1109,7 +1224,7 @@ public class ConnectivityService extends IConnectivityManager.Stub {
                     info.getExtraInfo());
         }
 
-        if (mNetAttributes[prevNetType].isDefault()) {
+        if (mNetConfigs[prevNetType].isDefault()) {
             tryFailover(prevNetType);
             if (mActiveDefaultNetwork != -1) {
                 NetworkInfo switchTo = mNetTrackers[mActiveDefaultNetwork].getNetworkInfo();
@@ -1120,16 +1235,39 @@ public class ConnectivityService extends IConnectivityManager.Stub {
             }
         }
         intent.putExtra(ConnectivityManager.EXTRA_INET_CONDITION, mDefaultInetConditionPublished);
-        // do this before we broadcast the change
-        handleConnectivityChange(prevNetType);
 
-        sendStickyBroadcast(intent);
+        // Reset interface if no other connections are using the same interface
+        boolean doReset = true;
+        LinkProperties linkProperties = mNetTrackers[prevNetType].getLinkProperties();
+        if (linkProperties != null) {
+            String oldIface = linkProperties.getInterfaceName();
+            if (TextUtils.isEmpty(oldIface) == false) {
+                for (NetworkStateTracker networkStateTracker : mNetTrackers) {
+                    if (networkStateTracker == null) continue;
+                    NetworkInfo networkInfo = networkStateTracker.getNetworkInfo();
+                    if (networkInfo.isConnected() && networkInfo.getType() != prevNetType) {
+                        LinkProperties l = networkStateTracker.getLinkProperties();
+                        if (l == null) continue;
+                        if (oldIface.equals(l.getInterfaceName())) {
+                            doReset = false;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // do this before we broadcast the change
+        handleConnectivityChange(prevNetType, doReset);
+
+        sendStickyBroadcastDelayed(intent, getConnectivityChangeDelay());
         /*
          * If the failover network is already connected, then immediately send
          * out a followup broadcast indicating successful failover
          */
         if (mActiveDefaultNetwork != -1) {
-            sendConnectedBroadcast(mNetTrackers[mActiveDefaultNetwork].getNetworkInfo());
+            sendConnectedBroadcastDelayed(mNetTrackers[mActiveDefaultNetwork].getNetworkInfo(),
+                    getConnectivityChangeDelay());
         }
     }
 
@@ -1139,7 +1277,7 @@ public class ConnectivityService extends IConnectivityManager.Stub {
          * Try to reconnect on all available and let them hash it out when
          * more than one connects.
          */
-        if (mNetAttributes[prevNetType].isDefault()) {
+        if (mNetConfigs[prevNetType].isDefault()) {
             if (mActiveDefaultNetwork == prevNetType) {
                 mActiveDefaultNetwork = -1;
             }
@@ -1149,12 +1287,12 @@ public class ConnectivityService extends IConnectivityManager.Stub {
             // TODO - don't filter by priority now - nice optimization but risky
 //            int currentPriority = -1;
 //            if (mActiveDefaultNetwork != -1) {
-//                currentPriority = mNetAttributes[mActiveDefaultNetwork].mPriority;
+//                currentPriority = mNetConfigs[mActiveDefaultNetwork].mPriority;
 //            }
             for (int checkType=0; checkType <= ConnectivityManager.MAX_NETWORK_TYPE; checkType++) {
                 if (checkType == prevNetType) continue;
-                if (mNetAttributes[checkType] == null) continue;
-                if (!mNetAttributes[checkType].isDefault()) continue;
+                if (mNetConfigs[checkType] == null) continue;
+                if (!mNetConfigs[checkType].isDefault()) continue;
 
 // Enabling the isAvailable() optimization caused mobile to not get
 // selected if it was in the middle of error handling. Specifically
@@ -1166,7 +1304,7 @@ public class ConnectivityService extends IConnectivityManager.Stub {
 // complete before it is really complete.
 //                if (!mNetTrackers[checkType].isAvailable()) continue;
 
-//                if (currentPriority >= mNetAttributes[checkType].mPriority) continue;
+//                if (currentPriority >= mNetConfigs[checkType].mPriority) continue;
 
                 NetworkStateTracker checkTracker = mNetTrackers[checkType];
                 NetworkInfo checkInfo = checkTracker.getNetworkInfo();
@@ -1183,11 +1321,15 @@ public class ConnectivityService extends IConnectivityManager.Stub {
         sendGeneralBroadcast(info, ConnectivityManager.CONNECTIVITY_ACTION);
     }
 
+    private void sendConnectedBroadcastDelayed(NetworkInfo info, int delayMs) {
+        sendGeneralBroadcastDelayed(info, ConnectivityManager.CONNECTIVITY_ACTION, delayMs);
+    }
+
     private void sendInetConditionBroadcast(NetworkInfo info) {
         sendGeneralBroadcast(info, ConnectivityManager.INET_CONDITION_ACTION);
     }
 
-    private void sendGeneralBroadcast(NetworkInfo info, String bcastType) {
+    private Intent makeGeneralIntent(NetworkInfo info, String bcastType) {
         Intent intent = new Intent(bcastType);
         intent.putExtra(ConnectivityManager.EXTRA_NETWORK_INFO, info);
         if (info.isFailover()) {
@@ -1202,7 +1344,15 @@ public class ConnectivityService extends IConnectivityManager.Stub {
                     info.getExtraInfo());
         }
         intent.putExtra(ConnectivityManager.EXTRA_INET_CONDITION, mDefaultInetConditionPublished);
-        sendStickyBroadcast(intent);
+        return intent;
+    }
+
+    private void sendGeneralBroadcast(NetworkInfo info, String bcastType) {
+        sendStickyBroadcast(makeGeneralIntent(info, bcastType));
+    }
+
+    private void sendGeneralBroadcastDelayed(NetworkInfo info, String bcastType, int delayMs) {
+        sendStickyBroadcastDelayed(makeGeneralIntent(info, bcastType), delayMs);
     }
 
     /**
@@ -1239,7 +1389,7 @@ public class ConnectivityService extends IConnectivityManager.Stub {
             info.setFailover(false);
         }
 
-        if (mNetAttributes[info.getType()].isDefault()) {
+        if (mNetConfigs[info.getType()].isDefault()) {
             tryFailover(info.getType());
             if (mActiveDefaultNetwork != -1) {
                 NetworkInfo switchTo = mNetTrackers[mActiveDefaultNetwork].getNetworkInfo();
@@ -1267,11 +1417,29 @@ public class ConnectivityService extends IConnectivityManager.Stub {
                 mInitialBroadcast = new Intent(intent);
             }
             intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
+            if (DBG) {
+                log("sendStickyBroadcast: NetworkInfo=" +
+                    intent.getParcelableExtra(ConnectivityManager.EXTRA_NETWORK_INFO));
+            }
+
             mContext.sendStickyBroadcast(intent);
         }
     }
 
+    private void sendStickyBroadcastDelayed(Intent intent, int delayMs) {
+        if (delayMs <= 0) {
+            sendStickyBroadcast(intent);
+        } else {
+            if (DBG) log("sendStickyBroadcastDelayed: delayMs=" + delayMs + " intent=" + intent);
+            mHandler.sendMessageDelayed(mHandler.obtainMessage(
+                    EVENT_SEND_STICKY_BROADCAST_INTENT, intent), delayMs);
+        }
+    }
+
     void systemReady() {
+        IBinder b = ServiceManager.getService(Context.NETWORKMANAGEMENT_SERVICE);
+        mNetd = INetworkManagementService.Stub.asInterface(b);
+
         synchronized(this) {
             mSystemReady = true;
             if (mInitialBroadcast != null) {
@@ -1292,11 +1460,11 @@ public class ConnectivityService extends IConnectivityManager.Stub {
 
         // if this is a default net and other default is running
         // kill the one not preferred
-        if (mNetAttributes[type].isDefault()) {
+        if (mNetConfigs[type].isDefault()) {
             if (mActiveDefaultNetwork != -1 && mActiveDefaultNetwork != type) {
                 if ((type != mNetworkPreference &&
-                        mNetAttributes[mActiveDefaultNetwork].mPriority >
-                        mNetAttributes[type].mPriority) ||
+                        mNetConfigs[mActiveDefaultNetwork].priority >
+                        mNetConfigs[type].priority) ||
                         mNetworkPreference == mActiveDefaultNetwork) {
                         // don't accept this one
                         if (DBG) {
@@ -1342,8 +1510,8 @@ public class ConnectivityService extends IConnectivityManager.Stub {
         }
         thisNet.setTeardownRequested(false);
         updateNetworkSettings(thisNet);
-        handleConnectivityChange(type);
-        sendConnectedBroadcast(info);
+        handleConnectivityChange(type, false);
+        sendConnectedBroadcastDelayed(info, getConnectivityChangeDelay());
     }
 
     /**
@@ -1352,101 +1520,152 @@ public class ConnectivityService extends IConnectivityManager.Stub {
      * according to which networks are connected, and ensuring that the
      * right routing table entries exist.
      */
-    private void handleConnectivityChange(int netType) {
+    private void handleConnectivityChange(int netType, boolean doReset) {
+        int resetMask = doReset ? NetworkUtils.RESET_ALL_ADDRESSES : 0;
+
         /*
          * If a non-default network is enabled, add the host routes that
          * will allow it's DNS servers to be accessed.
          */
         handleDnsConfigurationChange(netType);
 
+        LinkProperties curLp = mCurrentLinkProperties[netType];
+        LinkProperties newLp = null;
+
         if (mNetTrackers[netType].getNetworkInfo().isConnected()) {
-            if (mNetAttributes[netType].isDefault()) {
+            newLp = mNetTrackers[netType].getLinkProperties();
+            if (VDBG) {
+                log("handleConnectivityChange: changed linkProperty[" + netType + "]:" +
+                        " doReset=" + doReset + " resetMask=" + resetMask +
+                        "\n   curLp=" + curLp +
+                        "\n   newLp=" + newLp);
+            }
+
+            if (curLp != null) {
+                if (curLp.isIdenticalInterfaceName(newLp)) {
+                    CompareResult<LinkAddress> car = curLp.compareAddresses(newLp);
+                    if ((car.removed.size() != 0) || (car.added.size() != 0)) {
+                        for (LinkAddress linkAddr : car.removed) {
+                            if (linkAddr.getAddress() instanceof Inet4Address) {
+                                resetMask |= NetworkUtils.RESET_IPV4_ADDRESSES;
+                            }
+                            if (linkAddr.getAddress() instanceof Inet6Address) {
+                                resetMask |= NetworkUtils.RESET_IPV6_ADDRESSES;
+                            }
+                        }
+                        if (DBG) {
+                            log("handleConnectivityChange: addresses changed" +
+                                    " linkProperty[" + netType + "]:" + " resetMask=" + resetMask +
+                                    "\n   car=" + car);
+                        }
+                    } else {
+                        if (DBG) {
+                            log("handleConnectivityChange: address are the same reset per doReset" +
+                                   " linkProperty[" + netType + "]:" +
+                                   " resetMask=" + resetMask);
+                        }
+                    }
+                } else {
+                    resetMask = NetworkUtils.RESET_ALL_ADDRESSES;
+                    log("handleConnectivityChange: interface not not equivalent reset both" +
+                            " linkProperty[" + netType + "]:" +
+                            " resetMask=" + resetMask);
+                }
+            }
+            if (mNetConfigs[netType].isDefault()) {
                 handleApplyDefaultProxy(netType);
-                addDefaultRoute(mNetTrackers[netType]);
-            } else {
-                addPrivateDnsRoutes(mNetTrackers[netType]);
             }
         } else {
-            if (mNetAttributes[netType].isDefault()) {
-                removeDefaultRoute(mNetTrackers[netType]);
+            if (VDBG) {
+                log("handleConnectivityChange: changed linkProperty[" + netType + "]:" +
+                        " doReset=" + doReset + " resetMask=" + resetMask +
+                        "\n  curLp=" + curLp +
+                        "\n  newLp= null");
+            }
+        }
+        mCurrentLinkProperties[netType] = newLp;
+        updateRoutes(newLp, curLp, mNetConfigs[netType].isDefault());
+
+        if (doReset || resetMask != 0) {
+            LinkProperties linkProperties = mNetTrackers[netType].getLinkProperties();
+            if (linkProperties != null) {
+                String iface = linkProperties.getInterfaceName();
+                if (TextUtils.isEmpty(iface) == false) {
+                    if (DBG) log("resetConnections(" + iface + ", " + resetMask + ")");
+                    NetworkUtils.resetConnections(iface, resetMask);
+                }
+            }
+        }
+
+        // TODO: Temporary notifying upstread change to Tethering.
+        //       @see bug/4455071
+        /** Notify TetheringService if interface name has been changed. */
+        if (TextUtils.equals(mNetTrackers[netType].getNetworkInfo().getReason(),
+                             Phone.REASON_LINK_PROPERTIES_CHANGED)) {
+            if (isTetheringSupported()) {
+                mTethering.handleTetherIfaceChange();
+            }
+        }
+    }
+
+    /**
+     * Add and remove routes using the old properties (null if not previously connected),
+     * new properties (null if becoming disconnected).  May even be double null, which
+     * is a noop.
+     * Uses isLinkDefault to determine if default routes should be set or conversely if
+     * host routes should be set to the dns servers
+     */
+    private void updateRoutes(LinkProperties newLp, LinkProperties curLp, boolean isLinkDefault) {
+        Collection<RouteInfo> routesToAdd = null;
+        CompareResult<InetAddress> dnsDiff = new CompareResult<InetAddress>();
+        CompareResult<RouteInfo> routeDiff = new CompareResult<RouteInfo>();
+        if (curLp != null) {
+            // check for the delta between the current set and the new
+            routeDiff = curLp.compareRoutes(newLp);
+            dnsDiff = curLp.compareDnses(newLp);
+        } else if (newLp != null) {
+            routeDiff.added = newLp.getRoutes();
+            dnsDiff.added = newLp.getDnses();
+        }
+
+        for (RouteInfo r : routeDiff.removed) {
+            if (isLinkDefault || ! r.isDefaultRoute()) {
+                removeRoute(curLp, r);
+            }
+        }
+
+        for (RouteInfo r :  routeDiff.added) {
+            if (isLinkDefault || ! r.isDefaultRoute()) {
+                addRoute(newLp, r);
+            }
+        }
+
+        if (!isLinkDefault) {
+            // handle DNS routes
+            if (routeDiff.removed.size() == 0 && routeDiff.added.size() == 0) {
+                // no change in routes, check for change in dns themselves
+                for (InetAddress oldDns : dnsDiff.removed) {
+                    removeRouteToAddress(curLp, oldDns);
+                }
+                for (InetAddress newDns : dnsDiff.added) {
+                    addRouteToAddress(newLp, newDns);
+                }
             } else {
-                removePrivateDnsRoutes(mNetTrackers[netType]);
-            }
-        }
-    }
-
-    private void addPrivateDnsRoutes(NetworkStateTracker nt) {
-        boolean privateDnsRouteSet = nt.isPrivateDnsRouteSet();
-        LinkProperties p = nt.getLinkProperties();
-        if (p == null) return;
-        String interfaceName = p.getInterfaceName();
-
-        if (DBG) {
-            log("addPrivateDnsRoutes for " + nt +
-                    "(" + interfaceName + ") - mPrivateDnsRouteSet = " + privateDnsRouteSet);
-        }
-        if (interfaceName != null && !privateDnsRouteSet) {
-            Collection<InetAddress> dnsList = p.getDnses();
-            for (InetAddress dns : dnsList) {
-                if (DBG) log("  adding " + dns);
-                NetworkUtils.addHostRoute(interfaceName, dns, null);
-            }
-            nt.privateDnsRouteSet(true);
-        }
-    }
-
-    private void removePrivateDnsRoutes(NetworkStateTracker nt) {
-        // TODO - we should do this explicitly but the NetUtils api doesnt
-        // support this yet - must remove all.  No worse than before
-        LinkProperties p = nt.getLinkProperties();
-        if (p == null) return;
-        String interfaceName = p.getInterfaceName();
-        boolean privateDnsRouteSet = nt.isPrivateDnsRouteSet();
-        if (interfaceName != null && privateDnsRouteSet) {
-            if (DBG) {
-                log("removePrivateDnsRoutes for " + nt.getNetworkInfo().getTypeName() +
-                        " (" + interfaceName + ")");
-            }
-            NetworkUtils.removeHostRoutes(interfaceName);
-            nt.privateDnsRouteSet(false);
-        }
-    }
-
-
-    private void addDefaultRoute(NetworkStateTracker nt) {
-        LinkProperties p = nt.getLinkProperties();
-        if (p == null) return;
-        String interfaceName = p.getInterfaceName();
-        if (TextUtils.isEmpty(interfaceName)) return;
-        for (InetAddress gateway : p.getGateways()) {
-
-            if (NetworkUtils.addHostRoute(interfaceName, gateway, null) &&
-                    NetworkUtils.addDefaultRoute(interfaceName, gateway)) {
-                if (DBG) {
-                    NetworkInfo networkInfo = nt.getNetworkInfo();
-                    log("addDefaultRoute for " + networkInfo.getTypeName() +
-                            " (" + interfaceName + "), GatewayAddr=" + gateway.getHostAddress());
+                // routes changed - remove all old dns entries and add new
+                if (curLp != null) {
+                    for (InetAddress oldDns : curLp.getDnses()) {
+                        removeRouteToAddress(curLp, oldDns);
+                    }
+                }
+                if (newLp != null) {
+                    for (InetAddress newDns : newLp.getDnses()) {
+                        addRouteToAddress(newLp, newDns);
+                    }
                 }
             }
         }
     }
 
-
-    public void removeDefaultRoute(NetworkStateTracker nt) {
-        LinkProperties p = nt.getLinkProperties();
-        if (p == null) return;
-        String interfaceName = p.getInterfaceName();
-
-        if (interfaceName != null) {
-            if (NetworkUtils.removeDefaultRoute(interfaceName) >= 0) {
-                if (DBG) {
-                    NetworkInfo networkInfo = nt.getNetworkInfo();
-                    log("removeDefaultRoute for " + networkInfo.getTypeName() + " (" +
-                            interfaceName + ")");
-                }
-            }
-        }
-    }
 
    /**
      * Reads the network specific TCP buffer sizes from SystemProperties
@@ -1528,7 +1747,7 @@ public class ConnectivityService extends IConnectivityManager.Stub {
     {
         if (DBG) log("reassessPidDns for pid " + myPid);
         for(int i : mPriorityList) {
-            if (mNetAttributes[i].isDefault()) {
+            if (mNetConfigs[i].isDefault()) {
                 continue;
             }
             NetworkStateTracker nt = mNetTrackers[i];
@@ -1609,8 +1828,19 @@ public class ConnectivityService extends IConnectivityManager.Stub {
             LinkProperties p = nt.getLinkProperties();
             if (p == null) return;
             Collection<InetAddress> dnses = p.getDnses();
+            try {
+                mNetd.setDnsServersForInterface(p.getInterfaceName(),
+                        NetworkUtils.makeStrings(dnses));
+            } catch (Exception e) {
+                Slog.e(TAG, "exception setting dns servers: " + e);
+            }
             boolean changed = false;
-            if (mNetAttributes[netType].isDefault()) {
+            if (mNetConfigs[netType].isDefault()) {
+                try {
+                    mNetd.setDefaultInterfaceForDns(p.getInterfaceName());
+                } catch (Exception e) {
+                    Slog.e(TAG, "exception setting default dns interface: " + e);
+                }
                 int j = 1;
                 if (dnses.size() == 0 && mDefaultDns != null) {
                     String dnsString = mDefaultDns.getHostAddress();
@@ -1657,7 +1887,7 @@ public class ConnectivityService extends IConnectivityManager.Stub {
         }
     }
 
-    private int getRestoreDefaultNetworkDelay() {
+    private int getRestoreDefaultNetworkDelay(int networkType) {
         String restoreDefaultNetworkDelayStr = SystemProperties.get(
                 NETWORK_RESTORE_DELAY_PROP_NAME);
         if(restoreDefaultNetworkDelayStr != null &&
@@ -1667,7 +1897,14 @@ public class ConnectivityService extends IConnectivityManager.Stub {
             } catch (NumberFormatException e) {
             }
         }
-        return RESTORE_DEFAULT_NETWORK_DELAY;
+        // if the system property isn't set, use the value for the apn type
+        int ret = RESTORE_DEFAULT_NETWORK_DELAY;
+
+        if ((networkType <= ConnectivityManager.MAX_NETWORK_TYPE) &&
+                (mNetConfigs[networkType] != null)) {
+            ret = mNetConfigs[networkType].restoreTime;
+        }
+        return ret;
     }
 
     @Override
@@ -1741,23 +1978,6 @@ public class ConnectivityService extends IConnectivityManager.Stub {
                     info = (NetworkInfo) msg.obj;
                     int type = info.getType();
                     NetworkInfo.State state = info.getState();
-                    // only do this optimization for wifi.  It going into scan mode for location
-                    // services generates alot of noise.  Meanwhile the mms apn won't send out
-                    // subsequent notifications when on default cellular because it never
-                    // disconnects..  so only do this to wifi notifications.  Fixed better when the
-                    // APN notifications are standardized.
-                    if (mNetAttributes[type].mLastState == state &&
-                            mNetAttributes[type].mRadio == ConnectivityManager.TYPE_WIFI) {
-                        if (DBG) {
-                            // TODO - remove this after we validate the dropping doesn't break
-                            // anything
-                            log("Dropping ConnectivityChange for " +
-                                    info.getTypeName() + ": " +
-                                    state + "/" + info.getDetailedState());
-                        }
-                        return;
-                    }
-                    mNetAttributes[type].mLastState = state;
 
                     if (DBG) log("ConnectivityChange for " +
                             info.getTypeName() + ": " +
@@ -1796,8 +2016,10 @@ public class ConnectivityService extends IConnectivityManager.Stub {
                     break;
                 case NetworkStateTracker.EVENT_CONFIGURATION_CHANGED:
                     info = (NetworkInfo) msg.obj;
-                    type = info.getType();
-                    handleConnectivityChange(type);
+                    // TODO: Temporary allowing network configuration
+                    //       change not resetting sockets.
+                    //       @see bug/4455071
+                    handleConnectivityChange(info.getType(), false);
                     break;
                 case EVENT_CLEAR_NET_TRANSITION_WAKELOCK:
                     String causedBy = null;
@@ -1851,6 +2073,20 @@ public class ConnectivityService extends IConnectivityManager.Stub {
                 case EVENT_APPLY_GLOBAL_HTTP_PROXY:
                 {
                     handleDeprecatedGlobalHttpProxy();
+                    break;
+                }
+                case EVENT_SET_DEPENDENCY_MET:
+                {
+                    boolean met = (msg.arg1 == ENABLED);
+                    handleSetDependencyMet(msg.arg2, met);
+                    break;
+                }
+                case EVENT_SEND_STICKY_BROADCAST_INTENT:
+                {
+                    Intent intent = (Intent)msg.obj;
+                    log("EVENT_SEND_STICKY_BROADCAST_INTENT: sendStickyBroadcast intent=" + intent);
+                    sendStickyBroadcast(intent);
+                    break;
                 }
             }
         }
@@ -2038,10 +2274,13 @@ public class ConnectivityService extends IConnectivityManager.Stub {
             if (DBG) log("event hold for obsolete network - aborting");
             return;
         }
-        if (mDefaultInetConditionPublished == mDefaultInetCondition) {
-            if (DBG) log("no change in condition - aborting");
-            return;
-        }
+        // TODO: Figure out why this optimization sometimes causes a
+        //       change in mDefaultInetCondition to be missed and the
+        //       UI to not be updated.
+        //if (mDefaultInetConditionPublished == mDefaultInetCondition) {
+        //    if (DBG) log("no change in condition - aborting");
+        //    return;
+        //}
         NetworkInfo networkInfo = mNetTrackers[mActiveDefaultNetwork].getNetworkInfo();
         if (networkInfo.isConnected() == false) {
             if (DBG) log("default network not connected - aborting");
@@ -2115,7 +2354,7 @@ public class ConnectivityService extends IConnectivityManager.Stub {
         synchronized (this) {
             if (mDefaultProxy != null && mDefaultProxy.equals(proxy)) return;
             if (mDefaultProxy == proxy) return;
-            if (!TextUtils.isEmpty(proxy.getHost())) {
+            if (proxy != null && !TextUtils.isEmpty(proxy.getHost())) {
                 mDefaultProxy = proxy;
             } else {
                 mDefaultProxy = null;
@@ -2183,5 +2422,25 @@ public class ConnectivityService extends IConnectivityManager.Stub {
 
     private void loge(String s) {
         Slog.e(TAG, s);
+    }
+    int convertFeatureToNetworkType(String feature){
+        int networkType = -1;
+        if (TextUtils.equals(feature, Phone.FEATURE_ENABLE_MMS)) {
+            networkType = ConnectivityManager.TYPE_MOBILE_MMS;
+        } else if (TextUtils.equals(feature, Phone.FEATURE_ENABLE_SUPL)) {
+            networkType = ConnectivityManager.TYPE_MOBILE_SUPL;
+        } else if (TextUtils.equals(feature, Phone.FEATURE_ENABLE_DUN) ||
+                TextUtils.equals(feature, Phone.FEATURE_ENABLE_DUN_ALWAYS)) {
+            networkType = ConnectivityManager.TYPE_MOBILE_DUN;
+        } else if (TextUtils.equals(feature, Phone.FEATURE_ENABLE_HIPRI)) {
+            networkType = ConnectivityManager.TYPE_MOBILE_HIPRI;
+        } else if (TextUtils.equals(feature, Phone.FEATURE_ENABLE_FOTA)) {
+            networkType = ConnectivityManager.TYPE_MOBILE_FOTA;
+        } else if (TextUtils.equals(feature, Phone.FEATURE_ENABLE_IMS)) {
+            networkType = ConnectivityManager.TYPE_MOBILE_IMS;
+        } else if (TextUtils.equals(feature, Phone.FEATURE_ENABLE_CBS)) {
+            networkType = ConnectivityManager.TYPE_MOBILE_CBS;
+        }
+        return networkType;
     }
 }

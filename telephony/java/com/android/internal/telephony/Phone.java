@@ -21,6 +21,7 @@ import android.net.LinkCapabilities;
 import android.net.LinkProperties;
 import android.os.Handler;
 import android.os.Message;
+import android.os.SystemProperties;
 import android.telephony.CellLocation;
 import android.telephony.PhoneStateListener;
 import android.telephony.ServiceState;
@@ -125,6 +126,12 @@ public interface Phone {
     static final String APN_TYPE_DUN = "dun";
     /** APN type for HiPri traffic */
     static final String APN_TYPE_HIPRI = "hipri";
+    /** APN type for FOTA */
+    static final String APN_TYPE_FOTA = "fota";
+    /** APN type for IMS */
+    static final String APN_TYPE_IMS = "ims";
+    /** APN type for CBS */
+    static final String APN_TYPE_CBS = "cbs";
 
     // "Features" accessible through the connectivity manager
     static final String FEATURE_ENABLE_MMS = "enableMMS";
@@ -132,6 +139,9 @@ public interface Phone {
     static final String FEATURE_ENABLE_DUN = "enableDUN";
     static final String FEATURE_ENABLE_HIPRI = "enableHIPRI";
     static final String FEATURE_ENABLE_DUN_ALWAYS = "enableDUNAlways";
+    static final String FEATURE_ENABLE_FOTA = "enableFOTA";
+    static final String FEATURE_ENABLE_IMS = "enableIMS";
+    static final String FEATURE_ENABLE_CBS = "enableCBS";
 
     /**
      * Return codes for <code>enableApnType()</code>
@@ -140,6 +150,7 @@ public interface Phone {
     static final int APN_REQUEST_STARTED    = 1;
     static final int APN_TYPE_NOT_AVAILABLE = 2;
     static final int APN_REQUEST_FAILED     = 3;
+    static final int APN_ALREADY_INACTIVE   = 4;
 
 
     /**
@@ -149,8 +160,8 @@ public interface Phone {
     static final String REASON_ROAMING_OFF = "roamingOff";
     static final String REASON_DATA_DISABLED = "dataDisabled";
     static final String REASON_DATA_ENABLED = "dataEnabled";
-    static final String REASON_GPRS_ATTACHED = "gprsAttached";
-    static final String REASON_GPRS_DETACHED = "gprsDetached";
+    static final String REASON_DATA_ATTACHED = "dataAttached";
+    static final String REASON_DATA_DETACHED = "dataDetached";
     static final String REASON_CDMA_DATA_ATTACHED = "cdmaDataAttached";
     static final String REASON_CDMA_DATA_DETACHED = "cdmaDataDetached";
     static final String REASON_APN_CHANGED = "apnChanged";
@@ -164,6 +175,10 @@ public interface Phone {
     static final String REASON_PS_RESTRICT_ENABLED = "psRestrictEnabled";
     static final String REASON_PS_RESTRICT_DISABLED = "psRestrictDisabled";
     static final String REASON_SIM_LOADED = "simLoaded";
+    static final String REASON_NW_TYPE_CHANGED = "nwTypeChanged";
+    static final String REASON_DATA_DEPENDENCY_MET = "dependencyMet";
+    static final String REASON_DATA_DEPENDENCY_UNMET = "dependencyUnmet";
+    static final String REASON_LINK_PROPERTIES_CHANGED = "linkPropertiesChanged";
 
     // Used for band mode selection methods
     static final int BM_UNSPECIFIED = 0; // selected by baseband automatically
@@ -180,6 +195,11 @@ public interface Phone {
     static final int PHONE_TYPE_CDMA = RILConstants.CDMA_PHONE;
     static final int PHONE_TYPE_SIP = RILConstants.SIP_PHONE;
 
+    // Modes for LTE_ON_CDMA
+    static final int LTE_ON_CDMA_UNKNOWN = RILConstants.LTE_ON_CDMA_UNKNOWN;
+    static final int LTE_ON_CDMA_FALSE = RILConstants.LTE_ON_CDMA_FALSE;
+    static final int LTE_ON_CDMA_TRUE = RILConstants.LTE_ON_CDMA_TRUE;
+
     // Used for preferred network type
     // Note NT_* substitute RILConstants.NETWORK_MODE_* above the Phone
     int NT_MODE_WCDMA_PREF   = RILConstants.NETWORK_MODE_WCDMA_PREF;
@@ -193,6 +213,7 @@ public interface Phone {
     int NT_MODE_EVDO_NO_CDMA = RILConstants.NETWORK_MODE_EVDO_NO_CDMA;
     int NT_MODE_GLOBAL       = RILConstants.NETWORK_MODE_GLOBAL;
 
+    int NT_MODE_LTE_ONLY     = RILConstants.NETWORK_MODE_LTE_ONLY;
     int PREFERRED_NT_MODE    = RILConstants.PREFERRED_NETWORK_MODE;
 
 
@@ -319,7 +340,7 @@ public interface Phone {
      * Returns string for the active APN host.
      *  @return type as a string or null if none.
      */
-    String getActiveApnHost();
+    String getActiveApnHost(String apnType);
 
     /**
      * Return the LinkProperties for the named apn or null if not available
@@ -1236,13 +1257,6 @@ public interface Phone {
     void getDataCallList(Message response);
 
     /**
-     * Get current mutiple data connection status
-     *
-     * @return list of data connections
-     */
-    List<DataConnection> getCurrentDataConnectionList();
-
-    /**
      * Update the ServiceState CellLocation for current network registration.
      */
     void updateServiceLocation();
@@ -1361,6 +1375,11 @@ public interface Phone {
     boolean isDataConnectivityPossible();
 
     /**
+     * Report on whether data connectivity is allowed for an APN.
+     */
+    boolean isDataConnectivityPossible(String apnType);
+
+    /**
      * Retrieves the unique device ID, e.g., IMEI for GSM phones and MEID for CDMA phones.
      */
     String getDeviceId();
@@ -1409,6 +1428,11 @@ public interface Phone {
      * Retrieves MEID for CDMA phones.
      */
     String getMeid();
+
+    /**
+     * Retrieves IMEI for phones. Returns null if IMEI is not set.
+     */
+    String getImei();
 
     /**
      * Retrieves the PhoneSubInfo of the Phone
@@ -1686,6 +1710,14 @@ public interface Phone {
      */
     void unsetOnEcbModeExitResponse(Handler h);
 
+    /**
+     * Return if the current radio is LTE on CDMA. This
+     * is a tri-state return value as for a period of time
+     * the mode may be unknown.
+     *
+     * @return {@link #LTE_ON_CDMA_UNKNOWN}, {@link #LTE_ON_CDMA_FALSE} or {@link #LTE_ON_CDMA_TRUE}
+     */
+    public int getLteOnCdmaMode();
 
     /**
      * TODO: Adding a function for each property is not good.

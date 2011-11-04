@@ -19,6 +19,7 @@ package android.os;
 
 import android.net.InterfaceConfiguration;
 import android.net.INetworkManagementEventObserver;
+import android.net.RouteInfo;
 import android.net.wifi.WifiConfiguration;
 
 /**
@@ -55,6 +56,22 @@ interface INetworkManagementService
      * Sets the configuration of the specified interface
      */
     void setInterfaceConfig(String iface, in InterfaceConfiguration cfg);
+
+    /**
+     * Retrieves the network routes currently configured on the specified
+     * interface
+     */
+    RouteInfo[] getRoutes(String iface);
+
+    /**
+     * Add the specified route to the interface.
+     */
+    void addRoute(String iface, in RouteInfo route);
+
+    /**
+     * Remove the specified route from the interface.
+     */
+    void removeRoute(String iface, in RouteInfo route);
 
     /**
      * Shuts down the service
@@ -207,4 +224,23 @@ interface INetworkManagementService
      */
     int getInterfaceTxThrottle(String iface);
 
+    /**
+     * Sets the name fo the default interface in the DNS resolver.
+     */
+    void setDefaultInterfaceForDns(String iface);
+
+    /**
+     * Bind name servers to an interface in the DNS resolver.
+     */
+    void setDnsServersForInterface(String iface, in String[] servers);
+
+    /**
+     * Flush the DNS cache associated with the default interface.
+     */
+    void flushDefaultDnsCache();
+
+    /**
+     * Flush the DNS cache associated with the specified interface.
+     */
+    void flushInterfaceDnsCache(String iface);
 }

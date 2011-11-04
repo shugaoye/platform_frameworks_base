@@ -38,6 +38,8 @@ import android.util.Log;
 
 import com.android.internal.R;
 import com.android.internal.telephony.test.SimulatedRadioControl;
+import com.android.internal.telephony.gsm.SIMRecords;
+import com.android.internal.telephony.gsm.SimCard;
 
 import java.util.Locale;
 
@@ -110,12 +112,15 @@ public abstract class PhoneBase extends Handler implements Phone {
     public CommandsInterface mCM;
     protected IccFileHandler mIccFileHandler;
     boolean mDnsCheckDisabled = false;
-    public DataConnectionTracker mDataConnection;
+    public DataConnectionTracker mDataConnectionTracker;
     boolean mDoesRilSendMultipleCallRing;
     int mCallRingContinueToken = 0;
     int mCallRingDelay;
     public boolean mIsTheCurrentActivePhone = true;
     boolean mIsVoiceCapable = true;
+    public IccRecords mIccRecords;
+    public IccCard mIccCard;
+    public SMSDispatcher mSMS;
 
     /**
      * Set a system property, unless we're in unit test mode
@@ -237,7 +242,8 @@ public abstract class PhoneBase extends Handler implements Phone {
     public void dispose() {
         synchronized(PhoneProxy.lockForRadioTechnologyChange) {
             mCM.unSetOnCallRing(this);
-            mDataConnection.onCleanUpConnection(false, REASON_RADIO_TURNED_OFF);
+            // Must cleanup all connectionS and needs to use sendMessage!
+            mDataConnectionTracker.cleanUpAllConnections(null);
             mIsTheCurrentActivePhone = false;
         }
     }
@@ -574,7 +580,7 @@ public abstract class PhoneBase extends Handler implements Phone {
                 if (l.length() >=5) {
                     country = l.substring(3, 5);
                 }
-                setSystemLocale(language, country);
+                setSystemLocale(language, country, false);
 
                 if (!country.isEmpty()) {
                     try {
@@ -596,10 +602,14 @@ public abstract class PhoneBase extends Handler implements Phone {
      * Utility code to set the system locale if it's not set already
      * @param language Two character language code desired
      * @param country Two character country code desired
+     * @param fromMcc Indicating whether the locale is set according to MCC table.
+     *                This flag wil be ignored by default implementation.
+     *                TODO: Use a source enumeration so that source of the locale
+     *                      can be prioritized.
      *
      *  {@hide}
      */
-    public void setSystemLocale(String language, String country) {
+    public void setSystemLocale(String language, String country, boolean fromMcc) {
         String l = SystemProperties.get("persist.sys.language");
         String c = SystemProperties.get("persist.sys.country");
 
@@ -659,6 +669,45 @@ public abstract class PhoneBase extends Handler implements Phone {
      */
     public Handler getHandler() {
         return this;
+    }
+
+    /**
+    * Retrieves the ServiceStateTracker of the phone instance.
+    */
+    public ServiceStateTracker getServiceStateTracker() {
+        return null;
+    }
+
+    /**
+    * Get call tracker
+    */
+    public CallTracker getCallTracker() {
+        return null;
+    }
+
+    @Override
+    public IccCard getIccCard() {
+        return mIccCard;
+    }
+
+    @Override
+    public String getIccSerialNumber() {
+        return mIccRecords.iccid;
+    }
+
+    @Override
+    public boolean getIccRecordsLoaded() {
+        return mIccRecords.getRecordsLoaded();
+    }
+
+    @Override
+    public boolean getMessageWaitingIndicator() {
+        return mIccRecords.getVoiceMessageWaiting();
+    }
+
+    @Override
+    public boolean getCallForwardingIndicator() {
+        return mIccRecords.getVoiceCallForwardingFlag();
     }
 
     /**
@@ -954,31 +1003,36 @@ public abstract class PhoneBase extends Handler implements Phone {
      }
 
     public String[] getActiveApnTypes() {
-        return mDataConnection.getActiveApnTypes();
+        return mDataConnectionTracker.getActiveApnTypes();
     }
 
-    public String getActiveApnHost() {
-        return mDataConnection.getActiveApnString();
+    public String getActiveApnHost(String apnType) {
+        return mDataConnectionTracker.getActiveApnString(apnType);
     }
 
     public LinkProperties getLinkProperties(String apnType) {
-        return mDataConnection.getLinkProperties(apnType);
+        return mDataConnectionTracker.getLinkProperties(apnType);
     }
 
     public LinkCapabilities getLinkCapabilities(String apnType) {
-        return mDataConnection.getLinkCapabilities(apnType);
+        return mDataConnectionTracker.getLinkCapabilities(apnType);
     }
 
     public int enableApnType(String type) {
-        return mDataConnection.enableApnType(type);
+        return mDataConnectionTracker.enableApnType(type);
     }
 
     public int disableApnType(String type) {
-        return mDataConnection.disableApnType(type);
+        return mDataConnectionTracker.disableApnType(type);
     }
 
     public boolean isDataConnectivityPossible() {
-        return ((mDataConnection != null) && (mDataConnection.isDataPossible()));
+        return isDataConnectivityPossible(Phone.APN_TYPE_DEFAULT);
+    }
+
+    public boolean isDataConnectivityPossible(String apnType) {
+        return ((mDataConnectionTracker != null) &&
+                (mDataConnectionTracker.isDataPossible(apnType)));
     }
 
     /**
@@ -1008,7 +1062,7 @@ public abstract class PhoneBase extends Handler implements Phone {
                 break;
         }
 
-        mDataConnection.setState(dcState);
+        mDataConnectionTracker.setState(dcState);
         notifyDataConnection(null, Phone.APN_TYPE_DEFAULT);
     }
 
@@ -1079,5 +1133,23 @@ public abstract class PhoneBase extends Handler implements Phone {
     private void logUnexpectedGsmMethodCall(String name) {
         Log.e(LOG_TAG, "Error! " + name + "() in PhoneBase should not be " +
                 "called, GSMPhone inactive.");
+    }
+
+    // Called by SimRecords which is constructed with a PhoneBase instead of a GSMPhone.
+    public void notifyCallForwardingIndicator() {
+        // This function should be overridden by the class GSMPhone. Not implemented in CDMAPhone.
+        Log.e(LOG_TAG, "Error! This function should never be executed, inactive CDMAPhone.");
+    }
+
+    public void notifyDataConnectionFailed(String reason, String apnType) {
+        mNotifier.notifyDataConnectionFailed(this, reason, apnType);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public int getLteOnCdmaMode() {
+        return mCM.getLteOnCdmaMode();
     }
 }

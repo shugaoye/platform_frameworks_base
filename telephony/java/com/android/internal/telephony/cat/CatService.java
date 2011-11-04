@@ -33,6 +33,7 @@ import com.android.internal.telephony.IccRecords;
 import android.util.Config;
 
 import java.io.ByteArrayOutputStream;
+import java.util.Locale;
 
 /**
  * Enumeration for representing the tag value of COMPREHENSION-TLV objects. If
@@ -118,6 +119,8 @@ public class CatService extends Handler implements AppInterface {
     private static IccRecords mIccRecords;
 
     // Service members.
+    // Protects singleton instance lazy initialization.
+    private static final Object sInstanceLock = new Object();
     private static CatService sInstance;
     private CommandsInterface mCmdIf;
     private Context mContext;
@@ -133,6 +136,7 @@ public class CatService extends Handler implements AppInterface {
     static final int MSG_ID_CALL_SETUP               = 4;
     static final int MSG_ID_REFRESH                  = 5;
     static final int MSG_ID_RESPONSE                 = 6;
+    static final int MSG_ID_SIM_READY                = 7;
 
     static final int MSG_ID_RIL_MSG_DECODED          = 10;
 
@@ -170,9 +174,11 @@ public class CatService extends Handler implements AppInterface {
         mIccRecords = ir;
 
         // Register for SIM ready event.
+        mCmdIf.registerForSIMReady(this, MSG_ID_SIM_READY, null);
+        mCmdIf.registerForRUIMReady(this, MSG_ID_SIM_READY, null);
+        mCmdIf.registerForNVReady(this, MSG_ID_SIM_READY, null);
         mIccRecords.registerForRecordsLoaded(this, MSG_ID_ICC_RECORDS_LOADED, null);
 
-        mCmdIf.reportStkServiceIsRunning(null);
         CatLog.d(this, "Is running");
     }
 
@@ -269,8 +275,20 @@ public class CatService extends Handler implements AppInterface {
                 sendTerminalResponse(cmdParams.cmdDet, ResultCode.OK, false, 0, null);
                 break;
             case PROVIDE_LOCAL_INFORMATION:
-                sendTerminalResponse(cmdParams.cmdDet, ResultCode.OK, false, 0, null);
-                return;
+                ResponseData resp;
+                switch (cmdParams.cmdDet.commandQualifier) {
+                    case CommandParamsFactory.DTTZ_SETTING:
+                        resp = new DTTZResponseData(null);
+                        sendTerminalResponse(cmdParams.cmdDet, ResultCode.OK, false, 0, resp);
+                        break;
+                    case CommandParamsFactory.LANGUAGE_SETTING:
+                        resp = new LanguageResponseData(Locale.getDefault().getLanguage());
+                        sendTerminalResponse(cmdParams.cmdDet, ResultCode.OK, false, 0, resp);
+                        break;
+                    default:
+                        sendTerminalResponse(cmdParams.cmdDet, ResultCode.OK, false, 0, null);
+                        return;
+                }
             case LAUNCH_BROWSER:
             case SELECT_ITEM:
             case GET_INPUT:
@@ -373,25 +391,30 @@ public class CatService extends Handler implements AppInterface {
 
     private void encodeOptionalTags(CommandDetails cmdDet,
             ResultCode resultCode, Input cmdInput, ByteArrayOutputStream buf) {
-        switch (AppInterface.CommandType.fromInt(cmdDet.typeOfCommand)) {
-            case GET_INKEY:
-                // ETSI TS 102 384,27.22.4.2.8.4.2.
-                // If it is a response for GET_INKEY command and the response timeout
-                // occured, then add DURATION TLV for variable timeout case.
-                if ((resultCode.value() == ResultCode.NO_RESPONSE_FROM_USER.value()) &&
-                    (cmdInput != null) && (cmdInput.duration != null)) {
-                    getInKeyResponse(buf, cmdInput);
-                }
-                break;
-            case PROVIDE_LOCAL_INFORMATION:
-                if ((cmdDet.commandQualifier == CommandParamsFactory.LANGUAGE_SETTING) &&
-                    (resultCode.value() == ResultCode.OK.value())) {
-                    getPliResponse(buf);
-                }
-                break;
-            default:
-                CatLog.d(this, "encodeOptionalTags() Unsupported Cmd:" + cmdDet.typeOfCommand);
-                break;
+        CommandType cmdType = AppInterface.CommandType.fromInt(cmdDet.typeOfCommand);
+        if (cmdType != null) {
+            switch (cmdType) {
+                case GET_INKEY:
+                    // ETSI TS 102 384,27.22.4.2.8.4.2.
+                    // If it is a response for GET_INKEY command and the response timeout
+                    // occured, then add DURATION TLV for variable timeout case.
+                    if ((resultCode.value() == ResultCode.NO_RESPONSE_FROM_USER.value()) &&
+                        (cmdInput != null) && (cmdInput.duration != null)) {
+                        getInKeyResponse(buf, cmdInput);
+                    }
+                    break;
+                case PROVIDE_LOCAL_INFORMATION:
+                    if ((cmdDet.commandQualifier == CommandParamsFactory.LANGUAGE_SETTING) &&
+                        (resultCode.value() == ResultCode.OK.value())) {
+                        getPliResponse(buf);
+                    }
+                    break;
+                default:
+                    CatLog.d(this, "encodeOptionalTags() Unsupported Cmd:" + cmdDet.typeOfCommand);
+                    break;
+            }
+        } else {
+            CatLog.d(this, "encodeOptionalTags() bad Cmd:" + cmdDet.typeOfCommand);
         }
     }
 
@@ -515,26 +538,28 @@ public class CatService extends Handler implements AppInterface {
      */
     public static CatService getInstance(CommandsInterface ci, IccRecords ir,
             Context context, IccFileHandler fh, IccCard ic) {
-        if (sInstance == null) {
-            if (ci == null || ir == null || context == null || fh == null
-                    || ic == null) {
-                return null;
-            }
-            HandlerThread thread = new HandlerThread("Cat Telephony service");
-            thread.start();
-            sInstance = new CatService(ci, ir, context, fh, ic);
-            CatLog.d(sInstance, "NEW sInstance");
-        } else if ((ir != null) && (mIccRecords != ir)) {
-            CatLog.d(sInstance, "Reinitialize the Service with SIMRecords");
-            mIccRecords = ir;
+        synchronized (sInstanceLock) {
+            if (sInstance == null) {
+                if (ci == null || ir == null || context == null || fh == null
+                        || ic == null) {
+                    return null;
+                }
+                HandlerThread thread = new HandlerThread("Cat Telephony service");
+                thread.start();
+                sInstance = new CatService(ci, ir, context, fh, ic);
+                CatLog.d(sInstance, "NEW sInstance");
+            } else if ((ir != null) && (mIccRecords != ir)) {
+                CatLog.d(sInstance, "Reinitialize the Service with SIMRecords");
+                mIccRecords = ir;
 
-            // re-Register for SIM ready event.
-            mIccRecords.registerForRecordsLoaded(sInstance, MSG_ID_ICC_RECORDS_LOADED, null);
-            CatLog.d(sInstance, "sr changed reinitialize and return current sInstance");
-        } else {
-            CatLog.d(sInstance, "Return current sInstance");
+                // re-Register for SIM ready event.
+                mIccRecords.registerForRecordsLoaded(sInstance, MSG_ID_ICC_RECORDS_LOADED, null);
+                CatLog.d(sInstance, "sr changed reinitialize and return current sInstance");
+            } else {
+                CatLog.d(sInstance, "Return current sInstance");
+            }
+            return sInstance;
         }
-        return sInstance;
     }
 
     /**
@@ -578,6 +603,10 @@ public class CatService extends Handler implements AppInterface {
             break;
         case MSG_ID_RESPONSE:
             handleCmdResponse((CatResponseMessage) msg.obj);
+            break;
+        case MSG_ID_SIM_READY:
+            CatLog.d(this, "SIM ready. Reporting STK service running now...");
+            mCmdIf.reportStkServiceIsRunning(null);
             break;
         default:
             throw new AssertionError("Unrecognized CAT command: " + msg.what);

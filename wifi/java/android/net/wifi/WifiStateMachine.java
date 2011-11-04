@@ -74,9 +74,9 @@ import android.util.LruCache;
 
 import com.android.internal.app.IBatteryStats;
 import com.android.internal.util.AsyncChannel;
-import com.android.internal.util.HierarchicalState;
-import com.android.internal.util.HierarchicalStateMachine;
 import com.android.internal.util.Protocol;
+import com.android.internal.util.State;
+import com.android.internal.util.StateMachine;
 
 import java.net.InetAddress;
 import java.util.ArrayList;
@@ -90,7 +90,7 @@ import java.util.regex.Pattern;
  *
  * @hide
  */
-public class WifiStateMachine extends HierarchicalStateMachine {
+public class WifiStateMachine extends StateMachine {
 
     private static final String TAG = "WifiStateMachine";
     private static final String NETWORKTYPE = "WIFI";
@@ -364,50 +364,50 @@ public class WifiStateMachine extends HierarchicalStateMachine {
     private static final int SOFT_AP_RUNNING = 1;
 
     /* Default parent state */
-    private HierarchicalState mDefaultState = new DefaultState();
+    private State mDefaultState = new DefaultState();
     /* Temporary initial state */
-    private HierarchicalState mInitialState = new InitialState();
+    private State mInitialState = new InitialState();
     /* Unloading the driver */
-    private HierarchicalState mDriverUnloadingState = new DriverUnloadingState();
+    private State mDriverUnloadingState = new DriverUnloadingState();
     /* Loading the driver */
-    private HierarchicalState mDriverUnloadedState = new DriverUnloadedState();
+    private State mDriverUnloadedState = new DriverUnloadedState();
     /* Driver load/unload failed */
-    private HierarchicalState mDriverFailedState = new DriverFailedState();
+    private State mDriverFailedState = new DriverFailedState();
     /* Driver loading */
-    private HierarchicalState mDriverLoadingState = new DriverLoadingState();
+    private State mDriverLoadingState = new DriverLoadingState();
     /* Driver loaded */
-    private HierarchicalState mDriverLoadedState = new DriverLoadedState();
+    private State mDriverLoadedState = new DriverLoadedState();
     /* Driver loaded, waiting for supplicant to start */
-    private HierarchicalState mSupplicantStartingState = new SupplicantStartingState();
+    private State mSupplicantStartingState = new SupplicantStartingState();
     /* Driver loaded and supplicant ready */
-    private HierarchicalState mSupplicantStartedState = new SupplicantStartedState();
+    private State mSupplicantStartedState = new SupplicantStartedState();
     /* Waiting for supplicant to stop and monitor to exit */
-    private HierarchicalState mSupplicantStoppingState = new SupplicantStoppingState();
+    private State mSupplicantStoppingState = new SupplicantStoppingState();
     /* Driver start issued, waiting for completed event */
-    private HierarchicalState mDriverStartingState = new DriverStartingState();
+    private State mDriverStartingState = new DriverStartingState();
     /* Driver started */
-    private HierarchicalState mDriverStartedState = new DriverStartedState();
+    private State mDriverStartedState = new DriverStartedState();
     /* Driver stopping */
-    private HierarchicalState mDriverStoppingState = new DriverStoppingState();
+    private State mDriverStoppingState = new DriverStoppingState();
     /* Driver stopped */
-    private HierarchicalState mDriverStoppedState = new DriverStoppedState();
+    private State mDriverStoppedState = new DriverStoppedState();
     /* Scan for networks, no connection will be established */
-    private HierarchicalState mScanModeState = new ScanModeState();
+    private State mScanModeState = new ScanModeState();
     /* Connecting to an access point */
-    private HierarchicalState mConnectModeState = new ConnectModeState();
+    private State mConnectModeState = new ConnectModeState();
     /* Fetching IP after network connection (assoc+auth complete) */
-    private HierarchicalState mConnectingState = new ConnectingState();
+    private State mConnectingState = new ConnectingState();
     /* Connected with IP addr */
-    private HierarchicalState mConnectedState = new ConnectedState();
+    private State mConnectedState = new ConnectedState();
     /* disconnect issued, waiting for network disconnect confirmation */
-    private HierarchicalState mDisconnectingState = new DisconnectingState();
+    private State mDisconnectingState = new DisconnectingState();
     /* Network is not connected, supplicant assoc+auth is not complete */
-    private HierarchicalState mDisconnectedState = new DisconnectedState();
+    private State mDisconnectedState = new DisconnectedState();
     /* Waiting for WPS to be completed*/
-    private HierarchicalState mWaitForWpsCompletionState = new WaitForWpsCompletionState();
+    private State mWaitForWpsCompletionState = new WaitForWpsCompletionState();
 
     /* Soft Ap is running */
-    private HierarchicalState mSoftApStartedState = new SoftApStartedState();
+    private State mSoftApStartedState = new SoftApStartedState();
 
 
     /**
@@ -481,7 +481,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         mNetworkInfo.setIsAvailable(false);
         mLinkProperties.clear();
         mLastBssid = null;
-        mLastNetworkId = -1;
+        mLastNetworkId = WifiConfiguration.INVALID_NETWORK_ID;
         mLastSignalLevel = -1;
 
         mAlarmManager = (AlarmManager)mContext.getSystemService(Context.ALARM_SERVICE);
@@ -821,11 +821,12 @@ public class WifiStateMachine extends HierarchicalStateMachine {
     }
 
     public void connectNetwork(WifiConfiguration wifiConfig) {
-        /* arg1 is used to indicate netId, force a netId value of -1 when
-         * we are passing a configuration since the default value of
-         * 0 is a valid netId
+        /* arg1 is used to indicate netId, force a netId value of
+         * WifiConfiguration.INVALID_NETWORK_ID when we are passing
+         * a configuration since the default value of 0 is a valid netId
          */
-        sendMessage(obtainMessage(CMD_CONNECT_NETWORK, -1, 0, wifiConfig));
+        sendMessage(obtainMessage(CMD_CONNECT_NETWORK, WifiConfiguration.INVALID_NETWORK_ID,
+                0, wifiConfig));
     }
 
     public void saveNetwork(WifiConfiguration wifiConfig) {
@@ -1361,7 +1362,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT
                 | Intent.FLAG_RECEIVER_REPLACE_PENDING);
         intent.putExtra(WifiManager.EXTRA_NETWORK_INFO, mNetworkInfo);
-        intent.putExtra(WifiManager.EXTRA_LINK_PROPERTIES, mLinkProperties);
+        intent.putExtra(WifiManager.EXTRA_LINK_PROPERTIES, new LinkProperties (mLinkProperties));
         if (bssid != null)
             intent.putExtra(WifiManager.EXTRA_BSSID, bssid);
         mContext.sendStickyBroadcast(intent);
@@ -1377,7 +1378,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
     private void sendLinkConfigurationChangedBroadcast() {
         Intent intent = new Intent(WifiManager.LINK_CONFIGURATION_CHANGED_ACTION);
         intent.addFlags(Intent.FLAG_RECEIVER_REGISTERED_ONLY_BEFORE_BOOT);
-        intent.putExtra(WifiManager.EXTRA_LINK_PROPERTIES, mLinkProperties);
+        intent.putExtra(WifiManager.EXTRA_LINK_PROPERTIES, new LinkProperties(mLinkProperties));
         mContext.sendBroadcast(intent);
     }
 
@@ -1412,9 +1413,9 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         Log.d(TAG, "Reset connections and stopping DHCP");
 
         /*
-         * Reset connections & stop DHCP
+         * stop DHCP
          */
-        NetworkUtils.resetConnections(mInterfaceName);
+       NetworkUtils.resetConnections(mInterfaceName, NetworkUtils.RESET_ALL_ADDRESSES);
 
         if (mDhcpStateMachine != null) {
             mDhcpStateMachine.sendMessage(DhcpStateMachine.CMD_STOP_DHCP);
@@ -1426,7 +1427,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         mWifiInfo.setInetAddress(null);
         mWifiInfo.setBSSID(null);
         mWifiInfo.setSSID(null);
-        mWifiInfo.setNetworkId(-1);
+        mWifiInfo.setNetworkId(WifiConfiguration.INVALID_NETWORK_ID);
         mWifiInfo.setRssi(MIN_RSSI);
         mWifiInfo.setLinkSpeed(-1);
 
@@ -1436,10 +1437,13 @@ public class WifiStateMachine extends HierarchicalStateMachine {
 
         /* Clear network properties */
         mLinkProperties.clear();
+        /* Clear IP settings if the network used DHCP */
+        if (!WifiConfigStore.isUsingStaticIp(mLastNetworkId)) {
+            WifiConfigStore.clearIpConfiguration(mLastNetworkId);
+        }
 
         mLastBssid= null;
-        mLastNetworkId = -1;
-
+        mLastNetworkId = WifiConfiguration.INVALID_NETWORK_ID;
     }
 
     void handlePreDhcpSetup() {
@@ -1502,7 +1506,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
             if (!linkProperties.equals(mLinkProperties)) {
                 Log.d(TAG, "Link configuration changed for netId: " + mLastNetworkId
                     + " old: " + mLinkProperties + "new: " + linkProperties);
-                NetworkUtils.resetConnections(mInterfaceName);
+                NetworkUtils.resetConnections(mInterfaceName, NetworkUtils.RESET_ALL_ADDRESSES);
                 mLinkProperties = linkProperties;
                 sendLinkConfigurationChangedBroadcast();
             }
@@ -1671,7 +1675,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
      * HSM states
      *******************************************************/
 
-    class DefaultState extends HierarchicalState {
+    class DefaultState extends State {
         @Override
         public boolean processMessage(Message message) {
             if (DBG) Log.d(TAG, getName() + message.toString() + "\n");
@@ -1754,7 +1758,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class InitialState extends HierarchicalState {
+    class InitialState extends State {
         @Override
         //TODO: could move logging into a common class
         public void enter() {
@@ -1775,7 +1779,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class DriverLoadingState extends HierarchicalState {
+    class DriverLoadingState extends State {
         @Override
         public void enter() {
             if (DBG) Log.d(TAG, getName() + "\n");
@@ -1854,7 +1858,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class DriverLoadedState extends HierarchicalState {
+    class DriverLoadedState extends State {
         @Override
         public void enter() {
             if (DBG) Log.d(TAG, getName() + "\n");
@@ -1895,7 +1899,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class DriverUnloadingState extends HierarchicalState {
+    class DriverUnloadingState extends State {
         @Override
         public void enter() {
             if (DBG) Log.d(TAG, getName() + "\n");
@@ -1976,7 +1980,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class DriverUnloadedState extends HierarchicalState {
+    class DriverUnloadedState extends State {
         @Override
         public void enter() {
             if (DBG) Log.d(TAG, getName() + "\n");
@@ -1997,7 +2001,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class DriverFailedState extends HierarchicalState {
+    class DriverFailedState extends State {
         @Override
         public void enter() {
             Log.e(TAG, getName() + "\n");
@@ -2011,7 +2015,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
     }
 
 
-    class SupplicantStartingState extends HierarchicalState {
+    class SupplicantStartingState extends State {
         @Override
         public void enter() {
             if (DBG) Log.d(TAG, getName() + "\n");
@@ -2031,7 +2035,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
                     mWpsStateMachine.sendMessage(CMD_RESET_WPS_STATE);
                     /* Initialize data structures */
                     mLastBssid = null;
-                    mLastNetworkId = -1;
+                    mLastNetworkId = WifiConfiguration.INVALID_NETWORK_ID;
                     mLastSignalLevel = -1;
 
                     mWifiInfo.setMacAddress(WifiNative.getMacAddressCommand());
@@ -2083,7 +2087,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class SupplicantStartedState extends HierarchicalState {
+    class SupplicantStartedState extends State {
         @Override
         public void enter() {
             if (DBG) Log.d(TAG, getName() + "\n");
@@ -2206,7 +2210,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class SupplicantStoppingState extends HierarchicalState {
+    class SupplicantStoppingState extends State {
         @Override
         public void enter() {
             if (DBG) Log.d(TAG, getName() + "\n");
@@ -2249,7 +2253,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class DriverStartingState extends HierarchicalState {
+    class DriverStartingState extends State {
         @Override
         public void enter() {
             if (DBG) Log.d(TAG, getName() + "\n");
@@ -2290,7 +2294,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class DriverStartedState extends HierarchicalState {
+    class DriverStartedState extends State {
         @Override
         public void enter() {
             if (DBG) Log.d(TAG, getName() + "\n");
@@ -2394,7 +2398,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class DriverStoppingState extends HierarchicalState {
+    class DriverStoppingState extends State {
         @Override
         public void enter() {
             if (DBG) Log.d(TAG, getName() + "\n");
@@ -2430,7 +2434,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class DriverStoppedState extends HierarchicalState {
+    class DriverStoppedState extends State {
         @Override
         public void enter() {
             if (DBG) Log.d(TAG, getName() + "\n");
@@ -2454,7 +2458,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class ScanModeState extends HierarchicalState {
+    class ScanModeState extends State {
         @Override
         public void enter() {
             if (DBG) Log.d(TAG, getName() + "\n");
@@ -2491,7 +2495,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class ConnectModeState extends HierarchicalState {
+    class ConnectModeState extends State {
         @Override
         public void enter() {
             if (DBG) Log.d(TAG, getName() + "\n");
@@ -2521,7 +2525,10 @@ public class WifiStateMachine extends HierarchicalStateMachine {
                     // Network id is only valid when we start connecting
                     if (SupplicantState.isConnecting(state)) {
                         mWifiInfo.setNetworkId(stateChangeResult.networkId);
+                    } else {
+                        mWifiInfo.setNetworkId(WifiConfiguration.INVALID_NETWORK_ID);
                     }
+
                     if (state == SupplicantState.ASSOCIATING) {
                         /* BSSID is valid only in ASSOCIATING state */
                         mWifiInfo.setBSSID(stateChangeResult.BSSID);
@@ -2601,7 +2608,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class ConnectingState extends HierarchicalState {
+    class ConnectingState extends State {
 
         @Override
         public void enter() {
@@ -2705,7 +2712,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
       }
     }
 
-    class ConnectedState extends HierarchicalState {
+    class ConnectedState extends State {
         @Override
         public void enter() {
             if (DBG) Log.d(TAG, getName() + "\n");
@@ -2777,7 +2784,6 @@ public class WifiStateMachine extends HierarchicalStateMachine {
                     if (mWifiInfo.getNetworkId() == result.getNetworkId()) {
                         if (result.hasIpChanged()) {
                             Log.d(TAG,"Reconfiguring IP on connection");
-                            NetworkUtils.resetConnections(mInterfaceName);
                             transitionTo(mConnectingState);
                         }
                         if (result.hasProxyChanged()) {
@@ -2830,7 +2836,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class DisconnectingState extends HierarchicalState {
+    class DisconnectingState extends State {
         @Override
         public void enter() {
             if (DBG) Log.d(TAG, getName() + "\n");
@@ -2860,7 +2866,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class DisconnectedState extends HierarchicalState {
+    class DisconnectedState extends State {
         private boolean mAlarmEnabled = false;
         private long mScanIntervalMs;
 
@@ -2967,7 +2973,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class WaitForWpsCompletionState extends HierarchicalState {
+    class WaitForWpsCompletionState extends State {
         @Override
         public void enter() {
             if (DBG) Log.d(TAG, getName() + "\n");
@@ -3006,7 +3012,7 @@ public class WifiStateMachine extends HierarchicalStateMachine {
         }
     }
 
-    class SoftApStartedState extends HierarchicalState {
+    class SoftApStartedState extends State {
         @Override
         public void enter() {
             if (DBG) Log.d(TAG, getName() + "\n");

@@ -31,6 +31,8 @@ public interface RILConstants {
     // From the top of ril.cpp
     int RIL_ERRNO_INVALID_RESPONSE = -1;
 
+    int MAX_INT = 0x7FFFFFFF;
+
     // from RIL_Errno
     int SUCCESS = 0;
     int RADIO_NOT_AVAILABLE = 1;              /* If radio did not start or is resetting */
@@ -66,6 +68,11 @@ public interface RILConstants {
     int NETWORK_MODE_EVDO_NO_CDMA   = 6; /* EvDo only */
     int NETWORK_MODE_GLOBAL         = 7; /* GSM/WCDMA, CDMA, and EvDo (auto mode, according to PRL)
                                             AVAILABLE Application Settings menu*/
+    int NETWORK_MODE_LTE_CDMA_EVDO  = 8; /* LTE, CDMA and EvDo */
+    int NETWORK_MODE_LTE_GSM_WCDMA  = 9; /* LTE, GSM/WCDMA */
+    int NETWORK_MODE_LTE_CMDA_EVDO_GSM_WCDMA = 10; /* LTE, CDMA, EvDo, GSM/WCDMA */
+    int NETWORK_MODE_LTE_ONLY       = 11; /* LTE Only mode. */
+
     int PREFERRED_NETWORK_MODE      = NETWORK_MODE_WCDMA_PREF;
 
     /* CDMA subscription source. See ril.h RIL_REQUEST_CDMA_SET_SUBSCRIPTION */
@@ -80,6 +87,10 @@ public interface RILConstants {
     int GSM_PHONE = 1;
     int CDMA_PHONE = 2;
     int SIP_PHONE  = 3;
+
+    int LTE_ON_CDMA_UNKNOWN = -1;
+    int LTE_ON_CDMA_FALSE = 0;
+    int LTE_ON_CDMA_TRUE = 1;
 
     int CDM_TTY_MODE_DISABLED = 0;
     int CDM_TTY_MODE_ENABLED = 1;
@@ -104,6 +115,7 @@ public interface RILConstants {
     /* Deactivate data call reasons */
     int DEACTIVATE_REASON_NONE = 0;
     int DEACTIVATE_REASON_RADIO_OFF = 1;
+    int DEACTIVATE_REASON_PDP_RESET = 2;
 
 /*
 cat include/telephony/ril.h | \
@@ -138,10 +150,12 @@ cat include/telephony/ril.h | \
     int RIL_RESTRICTED_STATE_PS_ALL = 0x10;
 
     /** Data profile for RIL_REQUEST_SETUP_DATA_CALL */
-    static final int DATA_PROFILE_DEFAULT   = 0;
-    static final int DATA_PROFILE_TETHERED  = 1;
-    static final int DATA_PROFILE_OEM_BASE  = 1000;
-
+    public static final int DATA_PROFILE_DEFAULT   = 0;
+    public static final int DATA_PROFILE_TETHERED  = 1;
+    public static final int DATA_PROFILE_IMS       = 2;
+    public static final int DATA_PROFILE_FOTA      = 3;
+    public static final int DATA_PROFILE_CBS       = 4;
+    public static final int DATA_PROFILE_OEM_BASE  = 1000;
 
     int RIL_REQUEST_GET_SIM_STATUS = 1;
     int RIL_REQUEST_ENTER_SIM_PIN = 2;
@@ -279,7 +293,8 @@ cat include/telephony/ril.h | \
     int RIL_UNSOL_OEM_HOOK_RAW = 1028;
     int RIL_UNSOL_RINGBACK_TONE = 1029;
     int RIL_UNSOL_RESEND_INCALL_MUTE = 1030;
-    int RIL_UNSOL_CDMA_SUBSCRIPTION_CHANGED = 1031;
+    int RIL_UNSOL_CDMA_SUBSCRIPTION_SOURCE_CHANGED = 1031;
     int RIL_UNSOl_CDMA_PRL_CHANGED = 1032;
     int RIL_UNSOL_EXIT_EMERGENCY_CALLBACK_MODE = 1033;
+    int RIL_UNSOL_RIL_CONNECTED = 1034;
 }
