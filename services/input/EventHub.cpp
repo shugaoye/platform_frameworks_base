@@ -852,9 +852,6 @@ int EventHub::openDevice(const char *devicePath) {
         driverVersion >> 16, (driverVersion >> 8) & 0xff, driverVersion & 0xff);
 #endif
 
-    // Load the configuration file for the device.
-    loadConfiguration(device);
-
     // Figure out the kinds of events the device reports.
     uint8_t key_bitmask[sizeof_bit_array(KEY_MAX + 1)];
     memset(key_bitmask, 0, sizeof(key_bitmask));
@@ -952,6 +949,9 @@ int EventHub::openDevice(const char *devicePath) {
         device->classes |= INPUT_DEVICE_CLASS_SWITCH;
     }
 
+    // Load the configuration file for the device.
+    loadConfiguration(device);
+
     if ((device->classes & INPUT_DEVICE_CLASS_TOUCH)) {
         // Load the virtual keys for the touch screen, if any.
         // We do this now so that we can make sure to load the keymap if necessary.
@@ -1043,6 +1043,10 @@ int EventHub::openDevice(const char *devicePath) {
 void EventHub::loadConfiguration(Device* device) {
     device->configurationFile = getInputDeviceConfigurationFilePathByDeviceIdentifier(
             device->identifier, INPUT_DEVICE_CONFIGURATION_FILE_TYPE_CONFIGURATION);
+    if ((device->classes & INPUT_DEVICE_CLASS_TOUCH) && device->configurationFile.isEmpty()) {
+        device->configurationFile = getInputDeviceConfigurationFilePathByName(String8("GenericTouch"),
+                INPUT_DEVICE_CONFIGURATION_FILE_TYPE_CONFIGURATION);
+    }
     if (device->configurationFile.isEmpty()) {
         LOGD("No input device configuration file found for device '%s'.",
                 device->identifier.name.string());
