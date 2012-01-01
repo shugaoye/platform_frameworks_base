@@ -2481,6 +2481,16 @@ void TouchInputMapper::parseCalibration() {
                     orientationCalibrationString.string());
         }
     }
+
+    // Get 5-point calibration parameters
+    FILE *file = fopen("/data/system/tslib/pointercal", "r");
+    int *p = out.fiveCal;
+    if (file) {
+        fscanf(file, "%d %d %d %d %d %d %d", &p[0], &p[1], &p[2], &p[3], &p[4], &p[5], &p[6]);
+        fclose(file);
+    } else {
+        p[6] = 0;
+    }
 }
 
 void TouchInputMapper::resolveCalibration() {
@@ -3191,33 +3201,47 @@ void TouchInputMapper::prepareTouches(int32_t* outEdgeFlags,
             orientation = 0;
         }
 
+        float x_temp = float(in.x - mRawAxes.x.minValue);
+        float y_temp = float(in.y - mRawAxes.y.minValue);
+        float x_cal, y_cal;
+        int *p = mCalibration.fiveCal;
+        if (p[6]) {
+            // Apply 5-point calibration algorithm
+            x_cal = (x_temp * p[0] + y_temp * p[1] + p[2] ) / p[6];
+            y_cal = (x_temp * p[3] + y_temp * p[4] + p[5] ) / p[6];
+            LOGV("5cal: x_temp=%f y_temp=%f x_cal=%f y_cal=%f", x_temp, y_temp, x_cal, y_cal);
+        } else {
+            x_cal = x_temp * mLocked.xScale;
+            y_cal = y_temp * mLocked.yScale;
+        }
+
         // X and Y
         // Adjust coords for surface orientation.
         float x, y;
         switch (mLocked.surfaceOrientation) {
         case DISPLAY_ORIENTATION_90:
-            x = float(in.y - mRawAxes.y.minValue) * mLocked.yScale;
-            y = float(mRawAxes.x.maxValue - in.x) * mLocked.xScale;
+            x = y_cal;
+            y = mLocked.surfaceWidth - x_cal;
             orientation -= M_PI_2;
             if (orientation < - M_PI_2) {
                 orientation += M_PI;
             }
             break;
         case DISPLAY_ORIENTATION_180:
-            x = float(mRawAxes.x.maxValue - in.x) * mLocked.xScale;
-            y = float(mRawAxes.y.maxValue - in.y) * mLocked.yScale;
+            x = mLocked.surfaceWidth - x_cal;
+            y = mLocked.surfaceHeight - y_cal;
             break;
         case DISPLAY_ORIENTATION_270:
-            x = float(mRawAxes.y.maxValue - in.y) * mLocked.yScale;
-            y = float(in.x - mRawAxes.x.minValue) * mLocked.xScale;
+            x = mLocked.surfaceHeight - y_cal;
+            y = x_cal;
             orientation += M_PI_2;
             if (orientation > M_PI_2) {
                 orientation -= M_PI;
             }
             break;
         default:
-            x = float(in.x - mRawAxes.x.minValue) * mLocked.xScale;
-            y = float(in.y - mRawAxes.y.minValue) * mLocked.yScale;
+            x = x_cal;
+            y = y_cal;
             break;
         }
 

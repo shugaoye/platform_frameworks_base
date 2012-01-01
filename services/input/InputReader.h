@@ -873,6 +873,9 @@ protected:
         };
 
         OrientationCalibration orientationCalibration;
+
+        // 5-point calibration parameters
+        int fiveCal[7];
     } mCalibration;
 
     // Raw axis information from the driver.
