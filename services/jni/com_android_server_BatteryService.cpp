@@ -376,22 +376,14 @@ int register_android_server_BatteryService(JNIEnv* env)
         closedir(dir);
     }
 
-    if (!gChargerNames.size())
-        ALOGE("No charger supplies found");
-    if (!gPaths.batteryStatusPath)
-        ALOGE("batteryStatusPath not found");
-    if (!gPaths.batteryHealthPath)
-        ALOGE("batteryHealthPath not found");
-    if (!gPaths.batteryPresentPath)
-        ALOGE("batteryPresentPath not found");
-    if (!gPaths.batteryCapacityPath)
-        ALOGE("batteryCapacityPath not found");
-    if (!gPaths.batteryVoltagePath)
-        ALOGE("batteryVoltagePath not found");
-    if (!gPaths.batteryTemperaturePath)
-        ALOGE("batteryTemperaturePath not found");
-    if (!gPaths.batteryTechnologyPath)
-        ALOGE("batteryTechnologyPath not found");
+    ALOGE_IF(gChargerNames.isEmpty(), "No charger supplies found");
+    ALOGE_IF(gPaths.batteryStatusPath.isEmpty(), "batteryStatusPath not found");
+    ALOGE_IF(gPaths.batteryHealthPath.isEmpty(), "batteryHealthPath not found");
+    ALOGE_IF(gPaths.batteryPresentPath.isEmpty(), "batteryPresentPath not found");
+    ALOGE_IF(gPaths.batteryCapacityPath.isEmpty(), "batteryCapacityPath not found");
+    ALOGE_IF(gPaths.batteryVoltagePath.isEmpty(), "batteryVoltagePath not found");
+    ALOGE_IF(gPaths.batteryTemperaturePath.isEmpty(), "batteryTemperaturePath not found");
+    ALOGE_IF(gPaths.batteryTechnologyPath.isEmpty(), "batteryTechnologyPath not found");
 
     jclass clazz = env->FindClass("com/android/server/BatteryService");
 
