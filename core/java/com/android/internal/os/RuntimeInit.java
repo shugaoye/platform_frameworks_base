@@ -37,7 +37,7 @@ import java.util.TimeZone;
 import java.util.logging.LogManager;
 import org.apache.harmony.luni.internal.util.TimezoneGetter;
 
-import org.android_x86.analytics.AnalyticsHelper;
+// import org.android_x86.analytics.AnalyticsHelper;
 
 /**
  * Main entry point for runtime initialization.  Not for
@@ -65,8 +65,8 @@ public class RuntimeInit {
 
     // region @android-x86-analytics
     // delay 120 seconds if Analytics failed to capture exception
-    private static final long ANDROID_X86_ANALYTICS_FAILED_DELAY = 120 * 1000;
-    private static long mAnalyticsEnableTime = 0;
+    // private static final long ANDROID_X86_ANALYTICS_FAILED_DELAY = 120 * 1000;
+    // private static long mAnalyticsEnableTime = 0;
     // endregion
 
     /**
@@ -94,20 +94,20 @@ public class RuntimeInit {
                     Clog_e(TAG, message.toString(), e);
                 }
                 // region @android-x86-analytics
-                if (System.currentTimeMillis() > mAnalyticsEnableTime &&
-                        SystemProperties.getBoolean("persist.sys.apps_statistics", false)) {
-                    try {
-                        AnalyticsHelper.captureException(
-                                ActivityThread.currentActivityThread().getSystemContext(),
-                                e,
-                                t.getName(),
-                                ActivityThread.currentPackageName());
-                    } catch (Throwable ex) {
-                        // delay some time to avoid endless loop exception
-                        mAnalyticsEnableTime =
-                                System.currentTimeMillis() + ANDROID_X86_ANALYTICS_FAILED_DELAY;
-                    }
-                }
+                // if (System.currentTimeMillis() > mAnalyticsEnableTime &&
+                //         SystemProperties.getBoolean("persist.sys.apps_statistics", false)) {
+                //     try {
+                //         AnalyticsHelper.captureException(
+                //                 ActivityThread.currentActivityThread().getSystemContext(),
+                //                 e,
+                //                 t.getName(),
+                //                 ActivityThread.currentPackageName());
+                //     } catch (Throwable ex) {
+                //         // delay some time to avoid endless loop exception
+                //         mAnalyticsEnableTime =
+                //                 System.currentTimeMillis() + ANDROID_X86_ANALYTICS_FAILED_DELAY;
+                //     }
+                // }
                 // endregion
 
                 // Try to end profiling. If a profiler is running at this point, and we kill the
